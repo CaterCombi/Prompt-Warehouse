@@ -1,0 +1,47 @@
+modules = ["nodejs-24"]
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 8082
+externalPort = 3001
+
+[[ports]]
+localPort = 19215
+externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+COL_SHIPPING_DATE = "ExpectedShippingDate"
+PBI_DATASET_ID = "e7b74cd4-a4ec-45d8-9cff-c1ebb7b75318"
+PBI_MEASURE_NAME = "KPI"
+EXCEL_ENGINEER_ITEM_ID = "23F00A67-C1F6-4D27-96CC-7059DFF26B4F"
+EXCEL_ENGINEER_KPI_RANGE = "Sheet1!N29:S29"
+EXCEL_ENGINEER_NAMES_RANGE = "Sheet1!N2:P2,Sheet1!S2:S2"
+EXCEL_ENGINEER_COUNTS_RANGE = "Sheet1!N29:P29,Sheet1!S29:S29"

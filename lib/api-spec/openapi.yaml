@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: CaterCombi Warehouse Wallboard API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: dashboard
+    description: Wallboard dashboard data
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /health:
+    get:
+      operationId: getUpstreamHealth
+      tags: [health]
+      summary: Upstream connections health
+      description: Returns health status of Graph API and Power BI connections
+      responses:
+        "200":
+          description: Health status of upstream connections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpstreamHealth"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get wallboard dashboard data
+      description: Returns shipping today, priority ovens, and engineer daily average
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardData"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    UpstreamHealth:
+      type: object
+      required: [graph, powerBi]
+      properties:
+        graph:
+          type: object
+          required: [ok, message]
+          properties:
+            ok:
+              type: boolean
+            message:
+              type: string
+        powerBi:
+          type: object
+          required: [ok, message]
+          properties:
+            ok:
+              type: boolean
+            message:
+              type: string
+    OvenItem:
+      type: object
+      required: [title, status]
+      properties:
+        title:
+          type: string
+        status:
+          type: string
+        shippingDate:
+          type: ["string", "null"]
+        serial:
+          type: ["string", "null"]
+        manufacturer:
+          type: ["string", "null"]
+        model:
+          type: ["string", "null"]
+        size:
+          type: ["string", "null"]
+        fuel:
+          type: ["string", "null"]
+        urgency:
+          type: ["string", "null"]
+        additionalInfo:
+          type: ["string", "null"]
+    EngineerStat:
+      type: object
+      required: [name, kpi]
+      properties:
+        name:
+          type: string
+        kpi:
+          type: number
+    DashboardData:
+      type: object
+      required: [shippingToday, priorityOvens, engineerStats, lastUpdated, engineerLastFetched, totalOvensFixed]
+      properties:
+        shippingToday:
+          type: array
+          items:
+            $ref: "#/components/schemas/OvenItem"
+        priorityOvens:
+          type: array
+          items:
+            $ref: "#/components/schemas/OvenItem"
+        engineerStats:
+          type: array
+          items:
+            $ref: "#/components/schemas/EngineerStat"
+        lastUpdated:
+          type: string
+          description: ISO timestamp of last successful data fetch
+        engineerLastFetched:
+          type: string
+          description: ISO timestamp of last successful engineer stats fetch
+        totalOvensFixed:
+          type: number
+          description: Count of items with DateTestedOK set in the current month
