@@ -1,6 +1,6 @@
 # Kent Test Practice 01 — listing graphics
 
-Six 2000×2000 PNG product images for the *Kent Test Practice — Verbal & Non-Verbal Reasoning* PDF (Practice Test 01, Foundation).
+Six 2000×2000 PNG product images for the *Kent Test Practice — Verbal & Non-Verbal Reasoning* PDF (Practice 25 tests, 58 questions each — 1,450 in total).
 
 | File | Content |
 | --- | --- |
