@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kent Test Graphics</title>
+<link href="fonts.css" rel="stylesheet">
+<style>
+  :root{
+    --forest:#15352c; --forest-2:#1f4a3d; --pine:#2d6a57;
+    --sun:#f3c24d; --sun-soft:#fbe7b0; --coral:#e8795f;
+    --cream:#f7f2e7; --paper:#fffdf8; --mint:#e3efe8;
+    --ink:#15352c; --muted:#5d7269;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#888;font-family:Outfit,system-ui,sans-serif;color:var(--ink)}
+  .slide{width:1000px;height:1000px;position:relative;overflow:hidden;margin:20px auto;
+    background:var(--cream);
+    background-image:radial-gradient(circle at 1px 1px, rgba(21,53,44,.09) 1.2px, transparent 0);
+    background-size:22px 22px}
+  .slide.dark{background-color:var(--forest);
+    background-image:radial-gradient(circle at 1px 1px, rgba(243,194,77,.13) 1.3px, transparent 0);
+    background-size:24px 24px;color:var(--cream)}
+  .serif{font-family:Fraunces,Georgia,serif}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  /* shared footer */
+  .foot{z-index:20;position:absolute;left:0;right:0;bottom:0;height:78px;background:var(--forest);
+    border-top:5px solid var(--sun);display:flex;align-items:center;justify-content:center;gap:16px;
+    color:var(--cream);font-weight:700;font-size:23px;letter-spacing:.06em;text-transform:uppercase}
+  .foot i{width:8px;height:8px;border-radius:50%;background:var(--sun);display:inline-block}
+  .foot b{color:var(--sun);font-weight:700}
+  .dark .foot{background:var(--sun);color:var(--forest);border-top-color:var(--cream)}
+  .dark .foot i{background:var(--forest)}
+  .dark .foot b{color:var(--forest);text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:5px}
+
+  /* shared headings for light slides */
+  .kicker{font-family:"JetBrains Mono",monospace;font-size:16px;letter-spacing:.32em;text-transform:uppercase;color:var(--pine);text-align:center}
+  .h1{font-family:Fraunces,serif;font-weight:800;font-size:76px;line-height:1;text-align:center;letter-spacing:-.02em;margin-top:14px}
+  .h1 em{font-style:italic;font-weight:700;color:var(--pine);position:relative;white-space:nowrap}
+  .h1 em::after{content:"";position:absolute;left:-4px;right:-4px;bottom:4px;height:16px;background:var(--sun);z-index:-1;border-radius:4px;opacity:.85}
+  .sub{text-align:center;font-size:25px;color:var(--muted);margin-top:16px;font-weight:500}
+  .head{position:absolute;top:66px;left:0;right:0;z-index:1}
+
+  .page{background:#fff;border-radius:6px;box-shadow:0 18px 40px rgba(10,30,24,.28),0 2px 6px rgba(10,30,24,.18);overflow:hidden}
+  .page img{display:block;width:100%}
+
+  /* ---------- 1 hero ---------- */
+  .s1 .eyebrow{position:absolute;top:58px;left:0;right:0;text-align:center;font-family:"JetBrains Mono",monospace;
+    font-size:17px;letter-spacing:.38em;color:var(--sun)}
+  .s1 .t1{position:absolute;top:100px;left:0;right:0;text-align:center;font-family:Fraunces,serif;font-weight:800;
+    font-size:104px;letter-spacing:-.03em;line-height:1}
+  .s1 .t2{position:absolute;top:218px;left:0;right:0;text-align:center;font-family:Fraunces,serif;font-style:italic;font-weight:700;
+    font-size:66px;color:var(--sun);line-height:1.05;letter-spacing:-.01em}
+  .s1 .t3{position:absolute;top:305px;left:0;right:0;text-align:center;font-size:24px;color:#cfe0d8;font-weight:500}
+  .pills{position:absolute;top:358px;left:0;right:0;display:flex;justify-content:center;gap:14px}
+  .pill{padding:11px 24px;border-radius:12px;font-weight:800;font-size:19px;letter-spacing:.06em;border:2px solid rgba(247,242,231,.5);color:var(--cream)}
+  .pill.on{background:var(--coral);border-color:var(--coral);color:#fff}
+  .s1 .badge{position:absolute;right:62px;top:440px;width:170px;height:170px;border-radius:50%;background:var(--sun);color:var(--forest);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(8deg);
+    box-shadow:0 12px 30px rgba(0,0,0,.35);border:5px dashed rgba(21,53,44,.25);outline:6px solid var(--sun)}
+  .s1 .badge b{font-family:Fraunces,serif;font-size:80px;line-height:.9;font-weight:800}
+  .s1 .badge span{font-weight:800;font-size:17px;letter-spacing:.12em}
+  .s1 .tag{position:absolute;left:52px;top:448px;background:var(--cream);color:var(--forest);border-radius:14px;padding:14px 18px;
+    transform:rotate(-6deg);box-shadow:0 12px 26px rgba(0,0,0,.3);font-weight:700;font-size:17px;line-height:1.35;z-index:5}
+  .s1 .tag strong{display:block;font-family:Fraunces,serif;font-size:30px;font-weight:800}
+  .s1 .fan{position:absolute;bottom:0;left:0;right:0;height:520px}
+  .s1 .fan .page{position:absolute;width:320px}
+  .s1 .fan .p-l{left:120px;top:150px;transform:rotate(-8deg)}
+  .s1 .fan .p-r{right:120px;top:150px;transform:rotate(8deg)}
+  .s1 .fan .p-c{left:50%;margin-left:-175px;width:350px;top:90px;z-index:2}
+
+  /* ---------- 2 what's inside ---------- */
+  .rows{position:absolute;top:248px;left:70px;right:70px;display:flex;flex-direction:column;gap:12px}
+  .booklet{font-family:"JetBrains Mono",monospace;font-size:14px;letter-spacing:.24em;text-transform:uppercase;color:var(--pine);margin:6px 0 -4px 6px}
+  .row{background:var(--paper);border:2px solid #e3dccb;border-radius:18px;padding:14px 22px;display:flex;align-items:center;gap:22px;
+    box-shadow:0 6px 0 #e3dccb}
+  .ico{width:66px;height:66px;border-radius:16px;background:var(--mint);display:flex;align-items:center;justify-content:center;flex:none}
+  .ico svg{width:44px;height:44px}
+  .row h3{font-family:Fraunces,serif;font-size:31px;font-weight:800;line-height:1.05}
+  .row p{font-size:19px;color:var(--muted);margin-top:4px}
+  .row .meta{margin-left:auto;display:flex;gap:8px;flex:none}
+  .chip{border-radius:10px;padding:8px 12px;font-weight:800;font-size:18px;text-align:center;min-width:78px;line-height:1.1}
+  .chip small{display:block;font-size:12px;letter-spacing:.14em;font-weight:700;opacity:.8}
+  .chip.q{background:var(--forest);color:var(--cream)}
+  .chip.t{background:var(--sun-soft);color:var(--forest)}
+
+  /* ---------- 3 sample questions ---------- */
+  .qgrid{position:absolute;top:238px;left:56px;right:56px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .qcard{background:#fff;border-radius:18px;border:2px solid #e3dccb;padding:12px 18px 14px;box-shadow:0 6px 0 #e3dccb;display:flex;flex-direction:column}
+  .qcard .lab{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .qcard .lab span{background:var(--forest);color:var(--sun);font-family:"JetBrains Mono",monospace;font-size:13px;letter-spacing:.14em;
+    padding:6px 10px;border-radius:7px;text-transform:uppercase}
+  .qcard .lab b{font-family:Fraunces,serif;font-size:23px;font-weight:800}
+  .qcard .ask{font-size:16px;color:var(--muted);margin:-4px 0 6px}
+  .qcard.wide .lab{margin-bottom:6px}
+  .qcard.wide .ask{margin:0 0 0 auto;align-self:center}
+  .qcard .img{flex:1;display:flex;align-items:center;justify-content:center}
+  .qcard img{max-width:100%;max-height:160px;display:block}
+  .qcard.wide{grid-column:span 2}
+
+  /* ---------- 4 two booklets ---------- */
+  .books{position:absolute;top:240px;left:44px;right:44px;display:flex;flex-direction:column;gap:20px}
+  .book{border-radius:22px;padding:16px 22px 18px;position:relative}
+  .book.r{background:var(--forest)}
+  .book.e{background:var(--sun)}
+  .book .bh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+  .book .bh b{font-family:Fraunces,serif;font-size:34px;font-weight:800}
+  .book.r .bh b{color:var(--cream)}
+  .book .bh span{font-family:"JetBrains Mono",monospace;font-size:15px;letter-spacing:.14em;text-transform:uppercase}
+  .book.r .bh span{color:var(--sun)}
+  .thumbs{display:flex;gap:18px;justify-content:space-between}
+  .thumb{flex:1;text-align:center}
+  .thumb .page{height:200px;border-radius:5px}
+  .thumb .page img{width:100%;height:auto}
+  .thumb em{display:inline-block;margin-top:10px;font-style:normal;font-weight:800;font-size:18px;padding:5px 12px;border-radius:999px}
+  .book.r .thumb em{background:var(--sun);color:var(--forest)}
+  .book.e .thumb em{background:var(--forest);color:var(--cream)}
+
+  /* ---------- 5 answer sheet ---------- */
+  .s5 .sheet{position:absolute;left:70px;top:258px;width:420px;transform:rotate(-3deg)}
+  .s5 .cover{position:absolute;left:380px;top:560px;width:200px;transform:rotate(6deg);z-index:2}
+  .s5 .list{position:absolute;right:56px;top:258px;width:370px;display:flex;flex-direction:column;gap:12px}
+  .li{background:var(--paper);border:2px solid #e3dccb;border-radius:16px;padding:12px 18px;box-shadow:0 5px 0 #e3dccb}
+  .li b{display:flex;align-items:center;gap:10px;font-family:Fraunces,serif;font-size:25px;font-weight:800}
+  .li b i{width:30px;height:30px;border-radius:8px;background:var(--sun);display:inline-flex;align-items:center;justify-content:center;font-style:normal;
+    font-family:Outfit;font-size:17px;flex:none}
+  .li p{font-size:18px;color:var(--muted);margin-top:5px;line-height:1.3}
+  .score{position:absolute;right:56px;bottom:108px;width:370px;display:flex;gap:10px}
+  .score div{flex:1;background:var(--forest);color:var(--cream);border-radius:14px;padding:10px 14px}
+  .score small{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--sun);font-weight:700}
+  .score strong{display:block;font-family:Fraunces,serif;font-size:34px;font-weight:800;line-height:1.1}
+
+  /* ---------- 6 why parents ---------- */
+  .why{position:absolute;top:268px;left:62px;right:62px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .card{background:var(--paper);border:2px solid #e3dccb;border-radius:20px;padding:24px 24px 26px;box-shadow:0 6px 0 #e3dccb;min-height:176px}
+  .card .n{font-family:Fraunces,serif;font-style:italic;font-weight:700;font-size:22px;color:var(--coral)}
+  .card h3{font-family:Fraunces,serif;font-weight:800;font-size:30px;margin-top:6px;line-height:1.1}
+  .card p{font-size:19px;color:var(--muted);margin-top:8px;line-height:1.35}
+  .card.hl{background:var(--forest);border-color:var(--forest);box-shadow:0 6px 0 #0c2019}
+  .card.hl h3{color:var(--sun)} .card.hl p{color:#cfe0d8} .card.hl .n{color:var(--sun-soft)}
+</style>
+</head>
+<body>
+
+<!-- 1 · HERO -->
+<section class="slide dark s1" id="s1">
+  <div class="eyebrow">UK · 11+ · KENT TEST STYLE</div>
+  <div class="t1">Kent Test Practice</div>
+  <div class="t2">Verbal &amp; Non-Verbal Reasoning</div>
+  <div class="t3">58 original questions · reasoning, English &amp; maths · timed like the real thing</div>
+  <div class="pills"><span class="pill on">PRINT &amp; GO</span><span class="pill">INSTANT PDF</span><span class="pill">ANSWER SHEET</span></div>
+  <div class="tag"><strong>Test 01</strong>Full mock · 59 min</div>
+  <div class="badge"><b>58</b><span>QUESTIONS</span></div>
+  <div class="fan">
+    <div class="page p-l"><img src="assets/page-02.png" alt=""></div>
+    <div class="page p-r"><img src="assets/page-06.png" alt=""></div>
+    <div class="page p-c"><img src="assets/page-04.png" alt=""></div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+<!-- 2 · WHAT'S INSIDE -->
+<section class="slide s2" id="s2">
+  <div class="head">
+    <div class="kicker">Five sections · one mock test</div>
+    <div class="h1">What's <em>inside</em></div>
+    <div class="sub">Every Kent Test paper, each section timed</div>
+  </div>
+  <div class="rows">
+    <div class="booklet">Booklet 1 · Reasoning</div>
+    <div class="row">
+      <div class="ico"><svg viewBox="0 0 44 44" fill="none" stroke="#15352c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 34 17 10h2l8 24"/><path d="M12 26h12"/><path d="M29 20h8M29 27h8"/></svg></div>
+      <div><h3>Verbal reasoning</h3><p>Hidden words, codes, letter series &amp; analogies</p></div>
+      <div class="meta"><span class="chip q">15<small>QUESTIONS</small></span><span class="chip t">12<small>MINUTES</small></span></div>
+    </div>
+    <div class="row">
+      <div class="ico"><svg viewBox="0 0 44 44" fill="none" stroke="#15352c" stroke-width="3" stroke-linejoin="round"><path d="M8 34 17 12l9 22z" fill="#f3c24d"/><rect x="26" y="10" width="11" height="11" rx="1.5" fill="#15352c"/><circle cx="31.5" cy="30" r="5"/></svg></div>
+      <div><h3>Non-verbal reasoning</h3><p>Series, odd one out, analogies &amp; matrices</p></div>
+      <div class="meta"><span class="chip q">10<small>QUESTIONS</small></span><span class="chip t">8<small>MINUTES</small></span></div>
+    </div>
+    <div class="row">
+      <div class="ico"><svg viewBox="0 0 44 44" fill="none" stroke="#15352c" stroke-width="3" stroke-linejoin="round"><path d="M22 6 36 14v16L22 38 8 30V14z"/><path d="M8 14l14 8 14-8M22 22v16"/><path d="M22 22 8 14l14-8 14 8z" fill="#f3c24d"/></svg></div>
+      <div><h3>Spatial reasoning</h3><p>Cube nets, reflections &amp; rotations</p></div>
+      <div class="meta"><span class="chip q">5<small>QUESTIONS</small></span><span class="chip t">4<small>MINUTES</small></span></div>
+    </div>
+    <div class="booklet">Booklet 2 · English &amp; Maths</div>
+    <div class="row">
+      <div class="ico"><svg viewBox="0 0 44 44" fill="none" stroke="#15352c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10c6-2 11-1 15 3 4-4 9-5 15-3v24c-6-2-11-1-15 3-4-4-9-5-15-3z"/><path d="M22 13v24"/></svg></div>
+      <div><h3>English</h3><p>Spelling, grammar, punctuation &amp; comprehension</p></div>
+      <div class="meta"><span class="chip q">12<small>QUESTIONS</small></span><span class="chip t">15<small>MINUTES</small></span></div>
+    </div>
+    <div class="row">
+      <div class="ico"><svg viewBox="0 0 44 44" fill="none" stroke="#15352c" stroke-width="3" stroke-linecap="round"><rect x="7" y="7" width="30" height="30" rx="6"/><path d="M14 16h8M18 12v8M26 16h6M14 28l6-6M14 22l6 6M26 26h6M26 30h6"/></svg></div>
+      <div><h3>Maths</h3><p>Arithmetic, fractions, percentages, data &amp; more</p></div>
+      <div class="meta"><span class="chip q">16<small>QUESTIONS</small></span><span class="chip t">20<small>MINUTES</small></span></div>
+    </div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+<!-- 3 · SAMPLE QUESTIONS -->
+<section class="slide s3" id="s3">
+  <div class="head">
+    <div class="kicker">A look inside the booklet</div>
+    <div class="h1">Real <em>exam-style</em> questions</div>
+    <div class="sub">Five answer options on every question, just like the Kent Test</div>
+  </div>
+  <div class="qgrid">
+    <div class="qcard wide">
+      <div class="lab"><span>Non-verbal</span><b>Series</b><div class="ask">Which option should take the place of the question mark?</div></div>
+      <div class="img"><img src="assets/q-nvr-series.png" alt="" style="max-height:136px"></div>
+    </div>
+    <div class="qcard">
+      <div class="lab"><span>Verbal</span><b>Letter series</b></div>
+      <div class="ask">Find the next item in the series.</div>
+      <div class="img"><img src="assets/q-verbal-series.png" alt=""></div>
+    </div>
+    <div class="qcard">
+      <div class="lab"><span>Non-verbal</span><b>Matrices</b></div>
+      <div class="ask">Which option completes the grid?</div>
+      <div class="img"><img src="assets/q-nvr-matrix.png" alt=""></div>
+    </div>
+    <div class="qcard wide">
+      <div class="lab"><span>Spatial</span><b>Reflection</b><div class="ask">Which option shows the shape reflected in the dashed mirror line?</div></div>
+      <div class="img"><img src="assets/q-spatial-reflect.png" alt="" style="max-height:118px"></div>
+    </div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+<!-- 4 · TWO BOOKLETS -->
+<section class="slide s4" id="s4">
+  <div class="head">
+    <div class="kicker">11 printable A4 pages</div>
+    <div class="h1">Two booklets, <em>one full mock</em></div>
+    <div class="sub">Set out like the real Kent Test — sit it in one go</div>
+  </div>
+  <div class="books">
+    <div class="book r">
+      <div class="bh"><b>Reasoning</b><span>30 questions · 24 min</span></div>
+      <div class="thumbs">
+        <div class="thumb"><div class="page"><img src="assets/page-02.png" alt=""></div><em>Verbal</em></div>
+        <div class="thumb"><div class="page"><img src="assets/page-04.png" alt=""></div><em>Non-verbal</em></div>
+        <div class="thumb"><div class="page"><img src="assets/page-06.png" alt=""></div><em>Spatial</em></div>
+      </div>
+    </div>
+    <div class="book e">
+      <div class="bh"><b>English &amp; Maths</b><span>28 questions · 35 min</span></div>
+      <div class="thumbs">
+        <div class="thumb"><div class="page"><img src="assets/page-07.png" alt=""></div><em>English</em></div>
+        <div class="thumb"><div class="page"><img src="assets/page-09.png" alt=""></div><em>Maths</em></div>
+        <div class="thumb"><div class="page"><img src="assets/page-10.png" alt=""></div><em>Data &amp; charts</em></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+<!-- 5 · ANSWER SHEET -->
+<section class="slide s5" id="s5">
+  <div class="head">
+    <div class="kicker">Exam-day habits</div>
+    <div class="h1">Practise the <em>answer sheet</em></div>
+    <div class="sub">Build confidence with the real multiple-choice format</div>
+  </div>
+  <div class="page sheet"><img src="assets/page-11.png" alt=""></div>
+  <div class="page cover"><img src="assets/page-01.png" alt=""></div>
+  <div class="list">
+    <div class="li"><b><i>1</i>Separate answer sheet</b><p>Mark one box per question, just as on test day</p></div>
+    <div class="li"><b><i>2</i>Timed sections</b><p>Clear time limits for all five sections — 59 minutes in total</p></div>
+    <div class="li"><b><i>3</i>Clear instructions</b><p>A “Before you start” guide on the cover page</p></div>
+    <div class="li"><b><i>4</i>Score boxes</b><p>Record results for each booklet and the total</p></div>
+  </div>
+  <div class="score">
+    <div><small>Reasoning</small><strong>/ 30</strong></div>
+    <div><small>Eng &amp; Maths</small><strong>/ 28</strong></div>
+    <div style="background:var(--sun);color:var(--forest)"><small style="color:var(--forest)">Total</small><strong>/ 58</strong></div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+<!-- 6 · WHY PARENTS -->
+<section class="slide s6" id="s6">
+  <div class="head">
+    <div class="kicker">Made for home practice</div>
+    <div class="h1">Why parents <em>choose it</em></div>
+  </div>
+  <div class="why" style="top:236px">
+    <div class="card hl"><div class="n">01</div><h3>Original questions</h3><p>Written in the Kent Test style — not copied from past papers</p></div>
+    <div class="card"><div class="n">02</div><h3>Full mock test</h3><p>Verbal, non-verbal, spatial, English &amp; maths in one pack</p></div>
+    <div class="card"><div class="n">03</div><h3>Five-option answers</h3><p>Choose the one best answer, the same as on test day</p></div>
+    <div class="card"><div class="n">04</div><h3>Timed like the test</h3><p>Every section has its own time limit — about 59 minutes of work</p></div>
+    <div class="card"><div class="n">05</div><h3>Answer sheet included</h3><p>Practise marking answers the right way before the real exam</p></div>
+    <div class="card hl"><div class="n">06</div><h3>Print &amp; reuse</h3><p>Instant A4 PDF — print it again for extra practice</p></div>
+  </div>
+  <div class="foot">Instant download <i></i> <b>Printable A4 PDF</b> <i></i> 11+ Practice</div>
+</section>
+
+</body>
+</html>
