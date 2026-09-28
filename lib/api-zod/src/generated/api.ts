@@ -256,7 +256,11 @@ export const GetServiceDeskSummaryResponse = zod.object({
   "lastSyncedAt": zod.string().nullable(),
   "lastSyncStatus": zod.string(),
   "lastSyncError": zod.string().nullable(),
-  "outstandingJobsLastUpdatedAt": zod.string().nullable()
+  "outstandingJobsLastUpdatedAt": zod.string().nullable(),
+  "lastScheduleImportAt": zod.string().nullable(),
+  "lastScheduleImportRows": zod.number().nullable(),
+  "lastScheduleImportStatus": zod.enum(['never', 'healthy', 'small', 'empty', 'error']),
+  "lastScheduleImportError": zod.string().nullable()
 })
 
 

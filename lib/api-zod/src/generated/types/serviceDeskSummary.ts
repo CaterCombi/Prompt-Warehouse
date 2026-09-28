@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ServiceDeskSummaryLastScheduleImportStatus } from './serviceDeskSummaryLastScheduleImportStatus';
 
 export interface ServiceDeskSummary {
   openTicketsNow: number;
@@ -18,5 +19,12 @@ export interface ServiceDeskSummary {
   lastSyncError: string | null;
   /** @nullable */
   outstandingJobsLastUpdatedAt: string | null;
+  /** @nullable */
+  lastScheduleImportAt: string | null;
+  /** @nullable */
+  lastScheduleImportRows: number | null;
+  lastScheduleImportStatus: ServiceDeskSummaryLastScheduleImportStatus;
+  /** @nullable */
+  lastScheduleImportError: string | null;
   [key: string]: unknown;
  }

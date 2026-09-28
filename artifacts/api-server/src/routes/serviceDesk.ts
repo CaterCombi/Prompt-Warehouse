@@ -1,6 +1,6 @@
 import { Router, raw, text } from "express";
 import { parse } from "csv-parse/sync";
-import { desc, eq, isNull, and, gte, lt, sql } from "drizzle-orm";
+import { desc, eq, isNull, and, gte, lt, or, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { serviceDeskAssets, serviceDeskIngestionLog, serviceDeskJobs, serviceDeskSites, serviceDeskTickets } from "@workspace/db/schema";
 import { requireAuth } from "../middlewares/requireAuth.js";
@@ -25,22 +25,84 @@ const iso = (v: string | null) => {
 const normaliseAssetRef = (ref: string) => ref.trim().toLowerCase().replace(/^0+/, "") || ref.trim().toLowerCase();
 const parseAssetRefs = (value: string | null) =>
   (value ?? "").split(/[,;]|\s+-|-\s+/).map(normaliseAssetRef).filter(Boolean);
+async function logOutstandingImportFailure(filename: string, errorMessage: string, status: "error" | "empty" = "error") {
+  await db.insert(serviceDeskIngestionLog).values({
+    source: "csv_upload",
+    status,
+    filesFound: 1,
+    filesProcessed: 0,
+    ticketsImported: 0,
+    errorMessage,
+    metadata: { kind: "outstanding", filename, rowsImported: 0 },
+  });
+}
 router.get("/summary", async (req, res) => {
   try {
     const now = new Date();
     const month = typeof req.query.month === "string" ? req.query.month : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const start = iso(`${month}-01T00:00:00Z`) ?? new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1);
-    const [open, tickets, jobs, allJobs, last] = await Promise.all([
+    const [open, tickets, jobs, allJobs, last, scheduleImports] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(serviceDeskTickets).where(isNull(serviceDeskTickets.closedAt)),
       db.select({ count: sql<number>`count(*)` }).from(serviceDeskTickets).where(and(gte(serviceDeskTickets.createdAt, start), lt(serviceDeskTickets.createdAt, end))),
       db.select({ count: sql<number>`count(distinct ${serviceDeskJobs.jobRef})` }).from(serviceDeskJobs).where(and(gte(serviceDeskJobs.completedAt, start), lt(serviceDeskJobs.completedAt, end))),
       db.select({ completedAt: serviceDeskJobs.completedAt, scheduledAt: serviceDeskJobs.scheduledAt, ingestedAt: serviceDeskJobs.ingestedAt }).from(serviceDeskJobs).where(sql`${serviceDeskJobs.completedAt} is not null or ${serviceDeskJobs.scheduledAt} is not null`),
       db.select().from(serviceDeskIngestionLog).orderBy(desc(serviceDeskIngestionLog.createdAt)).limit(1),
+      db.select({
+        createdAt: serviceDeskIngestionLog.createdAt,
+        status: serviceDeskIngestionLog.status,
+        rowsImported: serviceDeskIngestionLog.ticketsImported,
+        errorMessage: serviceDeskIngestionLog.errorMessage,
+      }).from(serviceDeskIngestionLog)
+        .where(and(
+          or(
+            eq(serviceDeskIngestionLog.source, "csv_upload"),
+            eq(serviceDeskIngestionLog.source, "ftps"),
+          ),
+          sql`${serviceDeskIngestionLog.metadata}->>'kind' = 'outstanding'`,
+        ))
+        .orderBy(desc(serviceDeskIngestionLog.createdAt))
+        .limit(31),
     ]);
     const days = new Set(allJobs.map(j => j.completedAt).filter(d => d && d >= start && d < end).map(d => d!.toISOString().slice(0, 10)));
     const outstanding = allJobs.filter(j => j.scheduledAt && !j.completedAt).sort((a, b) => b.ingestedAt.getTime() - a.ingestedAt.getTime())[0];
-    res.json({ openTicketsNow: Number(open[0]?.count ?? 0), ticketsThisMonth: Number(tickets[0]?.count ?? 0), jobsThisMonth: Number(jobs[0]?.count ?? 0), activeDaysThisMonth: days.size, lastSyncedAt: last[0]?.createdAt?.toISOString() ?? null, lastSyncStatus: last[0]?.status === "success" ? "ok" : (last[0]?.status ?? "never"), lastSyncError: last[0]?.errorMessage ?? null, outstandingJobsLastUpdatedAt: outstanding?.ingestedAt.toISOString() ?? null });
+    const latestScheduleImport = scheduleImports[0];
+    const previousFeedSizes = scheduleImports.slice(1)
+      .filter(row => row.status === "success" && row.rowsImported != null && row.rowsImported > 0)
+      .slice(0, 5)
+      .map(row => Number(row.rowsImported))
+      .sort((a, b) => a - b);
+    const middle = Math.floor(previousFeedSizes.length / 2);
+    const medianFeedSize = previousFeedSizes.length === 0
+      ? null
+      : previousFeedSizes.length % 2 === 0
+        ? (previousFeedSizes[middle - 1]! + previousFeedSizes[middle]!) / 2
+        : previousFeedSizes[middle]!;
+    const minimumTypicalFeedSize = medianFeedSize === null ? 5 : Math.max(1, medianFeedSize / 2);
+    const scheduleRowsImported = latestScheduleImport?.rowsImported == null ? null : Number(latestScheduleImport.rowsImported);
+    const scheduleImportStatus = !latestScheduleImport
+      ? "never"
+      : latestScheduleImport.status === "empty" || (latestScheduleImport.status === "success" && scheduleRowsImported === 0)
+        ? "empty"
+        : latestScheduleImport.status !== "success"
+          ? "error"
+          : (scheduleRowsImported ?? 0) < minimumTypicalFeedSize
+            ? "small"
+            : "healthy";
+    res.json({
+      openTicketsNow: Number(open[0]?.count ?? 0),
+      ticketsThisMonth: Number(tickets[0]?.count ?? 0),
+      jobsThisMonth: Number(jobs[0]?.count ?? 0),
+      activeDaysThisMonth: days.size,
+      lastSyncedAt: last[0]?.createdAt?.toISOString() ?? null,
+      lastSyncStatus: last[0]?.status === "success" ? "ok" : (last[0]?.status ?? "never"),
+      lastSyncError: last[0]?.errorMessage ?? null,
+      outstandingJobsLastUpdatedAt: outstanding?.ingestedAt.toISOString() ?? null,
+      lastScheduleImportAt: latestScheduleImport?.createdAt.toISOString() ?? null,
+      lastScheduleImportRows: scheduleRowsImported,
+      lastScheduleImportStatus: scheduleImportStatus,
+      lastScheduleImportError: latestScheduleImport?.errorMessage ?? null,
+    });
   } catch (error) { req.log.error({ error }, "Service Desk summary failed"); res.status(500).json({ error: "Failed to load Service Desk summary" }); }
 });
 
@@ -141,19 +203,31 @@ router.post("/upload-csv", text({ type: ["text/csv", "text/plain"], limit: "25mb
   const filename = textValue(req.query.filename) ?? "upload.csv";
   const kind = textValue(req.query.kind) ?? "completed";
   const body = typeof req.body === "string" ? req.body : "";
-  if (!body.trim()) { res.status(400).json({ error: "A non-empty CSV file is required" }); return; }
-  if (Buffer.byteLength(body, "utf8") > 25 * 1024 * 1024) { res.status(413).json({ error: "CSV exceeds the 25MB upload limit" }); return; }
   if (kind !== "completed" && kind !== "outstanding") { res.status(400).json({ error: "CSV kind must be completed or outstanding" }); return; }
+  if (!body.trim()) {
+    if (kind === "outstanding") await logOutstandingImportFailure(filename, "The schedule CSV is empty.", "empty");
+    res.status(400).json({ error: "A non-empty CSV file is required" });
+    return;
+  }
+  if (Buffer.byteLength(body, "utf8") > 25 * 1024 * 1024) { res.status(413).json({ error: "CSV exceeds the 25MB upload limit" }); return; }
+  let scheduleImportHandled = false;
   try {
     const records = parse(body, { columns: (headers: string[]) => headers.map(h => h.trim().toLowerCase().replace(/[\s-]+/g, "_")), skip_empty_lines: true, relax_column_count: false, bom: true, trim: true }) as Record<string, string>[];
-    const headers = Object.keys(records[0] ?? {});
+    const headers = records.length
+      ? Object.keys(records[0]!)
+      : ((parse(body, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? [])
+        .map(header => header.trim().toLowerCase().replace(/[\s-]+/g, "_"));
     const pick = (names: string[]) => names.find(n => headers.includes(n));
     const jobColumn = pick(["job_number", "job_ref", "job_id", "reference"]);
     const completedColumn = pick(["completeddate", "completion_date", "completed_date", "date_completed"]);
     if (kind === "outstanding") {
-      if (!jobColumn && !pick(["id"])) { res.status(400).json({ error: "The schedule CSV needs a job ID." }); return; }
+      if (!jobColumn && !pick(["id"])) {
+        await logOutstandingImportFailure(filename, "The schedule CSV needs a job ID.");
+        res.status(400).json({ error: "The schedule CSV needs a job ID." });
+        return;
+      }
+      scheduleImportHandled = true;
       const count = await importOutstandingCsv(Buffer.from(body, "utf8"), filename);
-      await db.insert(serviceDeskIngestionLog).values({ source: "csv_upload", status: "success", filesFound: 1, filesProcessed: 1, ticketsImported: count, metadata: { kind: "outstanding", filename } });
       res.json({ filename, kind, rowsImported: count });
       return;
     }
@@ -188,6 +262,11 @@ router.post("/upload-csv", text({ type: ["text/csv", "text/plain"], limit: "25mb
     res.json({ filename, rowsImported: count });
   } catch (error) {
     req.log.warn({ error }, "Historical Service Desk CSV rejected");
+    const message = error instanceof Error ? error.message : "";
+    if (kind === "outstanding" && !scheduleImportHandled) {
+      const isEmptyFeed = /has no active visits/i.test(message);
+      await logOutstandingImportFailure(filename, message || "The schedule CSV could not be imported.", isEmptyFeed ? "empty" : "error");
+    }
     res.status(400).json({ error: "CSV could not be imported. Check its JobLogic headers, dates and quoting." });
   }
 });

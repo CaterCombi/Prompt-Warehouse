@@ -1054,7 +1054,7 @@ components:
     ServiceDeskSummary:
       type: object
       additionalProperties: true
-      required: [openTicketsNow, ticketsThisMonth, jobsThisMonth, activeDaysThisMonth, lastSyncedAt, lastSyncStatus, lastSyncError, outstandingJobsLastUpdatedAt]
+      required: [openTicketsNow, ticketsThisMonth, jobsThisMonth, activeDaysThisMonth, lastSyncedAt, lastSyncStatus, lastSyncError, outstandingJobsLastUpdatedAt, lastScheduleImportAt, lastScheduleImportRows, lastScheduleImportStatus, lastScheduleImportError]
       properties:
         openTicketsNow: {type: integer}
         ticketsThisMonth: {type: integer}
@@ -1064,6 +1064,12 @@ components:
         lastSyncStatus: {type: string}
         lastSyncError: {type: [string, "null"]}
         outstandingJobsLastUpdatedAt: {type: [string, "null"]}
+        lastScheduleImportAt: {type: [string, "null"]}
+        lastScheduleImportRows: {type: [integer, "null"]}
+        lastScheduleImportStatus:
+          type: string
+          enum: [never, healthy, small, empty, error]
+        lastScheduleImportError: {type: [string, "null"]}
     ServiceDeskTrends:
       type: object
       required: [daily, monthly, period]

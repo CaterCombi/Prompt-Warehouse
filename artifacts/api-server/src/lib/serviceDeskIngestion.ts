@@ -5,27 +5,47 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { serviceDeskAssets, serviceDeskIngestionLog, serviceDeskJobs, serviceDeskProcessedFiles, serviceDeskTickets } from "@workspace/db/schema";
 import { logger } from "./logger.js";
+import { createNonOverlappingRunner } from "./serviceDeskSchedulerCore.js";
 
 export const ASSET_PROPERTY_CANDIDATES = ["catercombi_asset_number", "asset_number", "caterdirect_asset_number__if_available_", "machine_details__model_number_"];
-let ingestionInFlight = false;
+const runWithIngestionLock = createNonOverlappingRunner();
+
+function ftpCredentialsReady(): boolean {
+  return Boolean(process.env.FTP_HOST && process.env.FTP_USER && process.env.FTP_PASSWORD);
+}
+
 export async function runServiceDeskSync() {
-  if (ingestionInFlight) return { locked: true as const };
-  ingestionInFlight = true;
-  try {
-    const ftpConfigured = Boolean(process.env.FTP_HOST || process.env.FTP_USER || process.env.FTP_PASSWORD);
+  const result = await runWithIngestionLock(async () => {
     const [hubspot, ftps] = await Promise.all([
       ingestHubSpot(),
-      ftpConfigured ? ingestFtps() : Promise.resolve({ filesFound: 0, filesProcessed: 0, error: null, skipped: true }),
+      ftpCredentialsReady()
+        ? ingestFtps()
+        : Promise.resolve({ filesFound: 0, filesProcessed: 0, error: null, skipped: true }),
     ]);
-    return { locked: false as const, hubspot, ftps };
-  }
-  finally { ingestionInFlight = false; }
+    return { hubspot, ftps };
+  });
+  return result.locked ? result : { locked: false as const, ...result.value };
+}
+
+export async function runServiceDeskFtpSync() {
+  const result = await runWithIngestionLock(async () => {
+    if (!ftpCredentialsReady()) {
+      return { filesFound: 0, filesProcessed: 0, error: "FTP credentials are not configured", skipped: true as const };
+    }
+    return ingestFtps();
+  });
+  return result.locked ? result : { locked: false as const, ftps: result.value };
+}
+
+export async function runServiceDeskHubSpotSync() {
+  const result = await runWithIngestionLock(() => ingestHubSpot());
+  return result.locked ? result : { locked: false as const, hubspot: result.value };
 }
 const val = (r: Record<string, string>, keys: string[]) => { for (const k of keys) if (r[k]?.trim()) return r[k].trim(); return null; };
 export const date = (s: string | null) => { if (!s) return null; const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/); const d = m ? new Date(`${m[3]!.length === 2 ? "20" : ""}${m[3]}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}T${(m[4] ?? "00").padStart(2, "0")}:${m[5] ?? "00"}:00Z`) : new Date(s); return Number.isNaN(d.getTime()) ? null : d; };
 export const completedJobIdentity = (ref: string, completed: Date) =>
   `joblogic:completed:${ref.trim().toLowerCase()}:${completed.toISOString()}`;
-const rows = (content: Buffer) => parse(content, { columns: (h: string[]) => h.map(x => x.toLowerCase().replace(/[\s-]+/g, "_").trim()), skip_empty_lines: true, relax_column_count: true, trim: true }) as Record<string, string>[];
+const rows = (content: Buffer) => parse(content, { columns: (h: string[]) => h.map(x => x.toLowerCase().replace(/[\s-]+/g, "_").trim()), skip_empty_lines: true, relax_column_count: true, trim: true, bom: true }) as Record<string, string>[];
 const kind = (r: Record<string, string>) => { const h = Object.keys(r); if (h.includes("asset_autoinc") && h.includes("site_id") && h.includes("service_type")) return "rental_assets"; if (h.some(x => x.includes("visit_startdate") || x.includes("appointment_date"))) return "outstanding"; if (h.some(x => x.includes("job_type") || x.includes("completion"))) return "jobs"; if (h.includes("asset_id") && h.some(x => x.includes("postcode"))) return "asset_addresses"; if (h.some(x => ["asset_id", "asset_ref", "asset_reference"].includes(x))) return "assets"; return "unknown"; };
 const jobRefKey = (ref: string) => ref.trim().toLowerCase().replace(/\s+/g, " ");
 export function buildJobTypeLookup(content: Buffer): Map<string, string> {
@@ -53,9 +73,18 @@ function ukVisitDate(value: string | null): Date | null {
   return new Date(utc - offset * 3600000);
 }
 
-export async function importOutstandingCsv(content: Buffer, filename: string, jobTypesByRef: ReadonlyMap<string, string> = new Map()): Promise<number> {
+export async function importOutstandingCsv(
+  content: Buffer,
+  filename: string,
+  jobTypesByRef: ReadonlyMap<string, string> = new Map(),
+  source: "csv_upload" | "ftps" = "csv_upload",
+): Promise<number> {
+  try {
   const input = rows(content);
-  const headers = Object.keys(input[0] ?? {});
+  const headers = Object.keys(input[0] ?? {}).length
+    ? Object.keys(input[0]!)
+    : ((parse(content, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? [])
+      .map(header => header.toLowerCase().replace(/[\s-]+/g, "_").trim());
   if (!headers.some(h => ["appointment_date", "visit_startdate", "appointment", "planned_date"].includes(h)) ||
       !headers.some(h => ["id", "job_number", "job_ref", "job_id", "reference"].includes(h))) {
     throw new Error("The schedule CSV needs a job ID and appointment or visit start date.");
@@ -81,7 +110,7 @@ export async function importOutstandingCsv(content: Buffer, filename: string, jo
     }];
   });
   if (!scheduledJobs.length) throw new Error("The schedule CSV has no active visits with valid dates; existing bookings were kept.");
-  return db.transaction(async tx => {
+  return await db.transaction(async tx => {
     await tx.delete(serviceDeskJobs).where(and(isNotNull(serviceDeskJobs.scheduledAt), isNull(serviceDeskJobs.completedAt)));
     for (const job of scheduledJobs) {
       await tx.insert(serviceDeskJobs).values(job).onConflictDoUpdate({
@@ -90,8 +119,29 @@ export async function importOutstandingCsv(content: Buffer, filename: string, jo
           status: job.status, scheduledAt: job.scheduledAt, sourceFile: filename, ingestedAt: new Date() },
       });
     }
+    await tx.insert(serviceDeskIngestionLog).values({
+      source,
+      status: "success",
+      filesFound: 1,
+      filesProcessed: 1,
+      ticketsImported: scheduledJobs.length,
+      metadata: { kind: "outstanding", filename, rowsImported: scheduledJobs.length },
+    });
     return scheduledJobs.length;
   });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await db.insert(serviceDeskIngestionLog).values({
+      source,
+      status: content.length === 0 || /has no active visits/i.test(message) ? "empty" : "error",
+      filesFound: 1,
+      filesProcessed: 0,
+      ticketsImported: 0,
+      errorMessage: message,
+      metadata: { kind: "outstanding", filename, rowsImported: 0 },
+    });
+    throw error;
+  }
 }
 
 export async function ingestHubSpot() {
@@ -126,7 +176,7 @@ export async function ingestHubSpot() {
 }
 
 async function importCsv(content: Buffer, filename: string, type: string, jobTypesByRef?: ReadonlyMap<string, string>) {
-  if (type === "outstanding") return importOutstandingCsv(content, filename, jobTypesByRef);
+  if (type === "outstanding") return importOutstandingCsv(content, filename, jobTypesByRef, "ftps");
   const input = rows(content);
   // Outstanding exports are snapshots. Replacement is performed in one DB
   // transaction after parsing has succeeded, so a bad file cannot erase the
@@ -262,7 +312,7 @@ export async function ingestFtps() {
       if (family === "outstanding jobs logged today or before" && latestEngineer) continue;
       const refreshThisEngineerSchedule = file.name === latestEngineer && refreshEngineerSchedule;
       if (await isProcessed(file.name) && !refreshThisEngineerSchedule) continue;
-      const content = await readCsvFile(file.name); const parsed = rows(content); const first = parsed[0]; const type = kind(first ?? {}); if (type === "unknown") { logger.warn({ filename: file.name }, "Skipping unknown FTPS CSV type"); continue; } const imported = await importCsv(content, file.name, type, refreshThisEngineerSchedule ? jobTypesByRef : undefined);
+       const content = await readCsvFile(file.name); const parsed = rows(content); const first = parsed[0] ?? Object.fromEntries(((parse(content, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? []).map(header => [header.toLowerCase().replace(/[\s-]+/g, "_").trim(), ""])); const detectedType = kind(first); const isOutstandingReport = file.name.toLowerCase().startsWith("outstanding jobs by engineer") || file.name.toLowerCase().startsWith("outstanding jobs logged today or before"); const type = detectedType === "unknown" && isOutstandingReport ? "outstanding" : detectedType; if (type === "unknown") { logger.warn({ filename: file.name }, "Skipping unknown FTPS CSV type"); continue; } const imported = await importCsv(content, file.name, type, refreshThisEngineerSchedule ? jobTypesByRef : undefined);
       await db.insert(serviceDeskProcessedFiles).values({ filename: file.name }).onConflictDoNothing(); filesProcessed++; logger.info({ filename: file.name, imported }, "FTPS file imported");
     }
     // Enrich imported postcodes through the public bulk geocoder when source

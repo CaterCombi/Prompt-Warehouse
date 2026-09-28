@@ -51,6 +51,7 @@ export * from './serviceDeskLegacyImportResultCounts';
 export * from './serviceDeskRentalPin';
 export * from './serviceDeskSourceResult';
 export * from './serviceDeskSummary';
+export * from './serviceDeskSummaryLastScheduleImportStatus';
 export * from './serviceDeskSyncResult';
 export * from './serviceDeskTopAsset';
 export * from './serviceDeskTrends';
