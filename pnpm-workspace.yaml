@@ -41,7 +41,7 @@ packages:
   - scripts
 
 catalog:
-  '@replit/vite-plugin-cartographer': ^0.5.1
+  '@replit/vite-plugin-cartographer': ^0.5.21
   '@replit/vite-plugin-dev-banner': ^0.1.1
   '@replit/vite-plugin-runtime-error-modal': ^0.0.6
   '@tailwindcss/vite': ^4.1.14
@@ -62,11 +62,21 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.2
+  vite: ^7.3.5
   wouter: ^3.3.5
   zod: ^3.25.76
 
 autoInstallPeers: false
+
+packageExtensions:
+  # react-native-worklets' Babel plugin imports these packages directly but
+  # does not declare them. pnpm's strict isolation exposed the missing edges
+  # after the Babel security upgrade.
+  "react-native-worklets@0.5.1":
+    dependencies:
+      "@babel/generator": "^7.29.6"
+      "@babel/traverse": "^7.29.6"
+      "@babel/types": "^7.29.6"
 
 onlyBuiltDependencies:
   - '@swc/core'
@@ -75,6 +85,17 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Security patches for transitive dependencies.
+  "@babel/core@<7.29.6": "7.29.6"
+  "markdown-it@<14.2.0": "14.2.0"
+  "undici@<6.28.0": "6.28.0"
+  "undici@>=7.0.0 <7.29.0": "7.29.0"
+  "uuid@<11.1.1": "11.1.1"
+  "qs@<6.16.0": "6.16.0"
+  "linkify-it@<5.0.2": "5.0.2"
+  "postcss@<8.5.23": "8.5.23"
+  "js-yaml@<3.15.2": "3.15.2"
+  "js-yaml@>=4.0.0 <4.3.2": "4.3.2"
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
@@ -96,11 +117,11 @@ overrides:
   "esbuild>@esbuild/win32-arm64": "-"
   "esbuild>@esbuild/win32-ia32": "-"
   "esbuild>@esbuild/win32-x64": "-"
-  "esbuild>@esbuild/aix-ppc64": '-'
-  "esbuild>@esbuild/android-arm": '-'
-  "esbuild>@esbuild/android-arm64": '-'
-  "esbuild>@esbuild/android-x64": '-'
-  "esbuild>@esbuild/openharmony-arm64": '-'
+  "esbuild>@esbuild/aix-ppc64": "-"
+  "esbuild>@esbuild/android-arm": "-"
+  "esbuild>@esbuild/android-arm64": "-"
+  "esbuild>@esbuild/android-x64": "-"
+  "esbuild>@esbuild/openharmony-arm64": "-"
   "lightningcss>lightningcss-android-arm64": "-"
   "lightningcss>lightningcss-darwin-arm64": "-"
   "lightningcss>lightningcss-darwin-x64": "-"
@@ -157,4 +178,4 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  esbuild: "0.28.1"

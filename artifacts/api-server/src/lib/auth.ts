@@ -1,83 +1,60 @@
-import * as msal from "@azure/msal-node";
-import { logger } from "./logger";
+import jwt from "jsonwebtoken";
 
-const tenantId = process.env["TENANT_ID"];
-const clientId = process.env["CLIENT_ID"];
-const clientSecret = process.env["CLIENT_SECRET"];
+function requiredSecret(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} must be configured`);
+  return value;
+}
 
-let graphApp: msal.ConfidentialClientApplication | null = null;
-let powerBiApp: msal.ConfidentialClientApplication | null = null;
+const JWT_SECRET = requiredSecret("SESSION_SECRET");
+const managerPassword = requiredSecret("MANAGER_PASSWORD");
+const adminPassword = requiredSecret("ADMIN_PASSWORD");
+// Changing passwords must also reject sessions issued under the old fallback credentials.
+const SESSION_VERSION = 2;
 
-function getGraphApp(): msal.ConfidentialClientApplication {
-  if (!graphApp) {
-    if (!tenantId || !clientId || !clientSecret) {
-      throw new Error("Missing Azure AD credentials: TENANT_ID, CLIENT_ID, CLIENT_SECRET");
-    }
-    graphApp = new msal.ConfidentialClientApplication({
-      auth: {
-        clientId,
-        clientSecret,
-        authority: `https://login.microsoftonline.com/${tenantId}`,
-      },
-      system: {
-        loggerOptions: {
-          loggerCallback: (level, message) => {
-            if (level === msal.LogLevel.Error) {
-              logger.error({ message }, "MSAL Graph error");
-            }
-          },
-          piiLoggingEnabled: false,
-          logLevel: msal.LogLevel.Error,
-        },
-      },
-    });
+const USERS: Record<string, { password: string; displayName: string }> = {
+  manager: {
+    password: managerPassword,
+    displayName: "Warehouse Manager",
+  },
+  admin: {
+    password: adminPassword,
+    displayName: "Administrator",
+  },
+};
+
+export interface TokenPayload {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+export function verifyCredentials(username: string, password: string): TokenPayload | null {
+  const user = USERS[username.toLowerCase()];
+  if (!user || user.password !== password) return null;
+  return {
+    id: username.toLowerCase(),
+    username: username.toLowerCase(),
+    displayName: user.displayName,
+  };
+}
+
+export function signToken(payload: TokenPayload): string {
+  return jwt.sign({ ...payload, sessionVersion: SESSION_VERSION }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+export function verifyToken(token: string): TokenPayload | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (
+      typeof decoded === "string" ||
+      decoded.sessionVersion !== SESSION_VERSION ||
+      typeof decoded.id !== "string" ||
+      typeof decoded.username !== "string" ||
+      typeof decoded.displayName !== "string"
+    ) return null;
+    return { id: decoded.id, username: decoded.username, displayName: decoded.displayName };
+  } catch {
+    return null;
   }
-  return graphApp;
-}
-
-function getPowerBiApp(): msal.ConfidentialClientApplication {
-  if (!powerBiApp) {
-    if (!tenantId || !clientId || !clientSecret) {
-      throw new Error("Missing Azure AD credentials: TENANT_ID, CLIENT_ID, CLIENT_SECRET");
-    }
-    powerBiApp = new msal.ConfidentialClientApplication({
-      auth: {
-        clientId,
-        clientSecret,
-        authority: `https://login.microsoftonline.com/${tenantId}`,
-      },
-      system: {
-        loggerOptions: {
-          loggerCallback: (level, message) => {
-            if (level === msal.LogLevel.Error) {
-              logger.error({ message }, "MSAL Power BI error");
-            }
-          },
-          piiLoggingEnabled: false,
-          logLevel: msal.LogLevel.Error,
-        },
-      },
-    });
-  }
-  return powerBiApp;
-}
-
-export async function getGraphToken(): Promise<string> {
-  const result = await getGraphApp().acquireTokenByClientCredential({
-    scopes: ["https://graph.microsoft.com/.default"],
-  });
-  if (!result?.accessToken) throw new Error("Failed to acquire Graph token");
-  return result.accessToken;
-}
-
-export async function getPowerBiToken(): Promise<string> {
-  const result = await getPowerBiApp().acquireTokenByClientCredential({
-    scopes: ["https://analysis.windows.net/powerbi/api/.default"],
-  });
-  if (!result?.accessToken) throw new Error("Failed to acquire Power BI token");
-  return result.accessToken;
-}
-
-export function isAzureConfigured(): boolean {
-  return !!(tenantId && clientId && clientSecret);
 }

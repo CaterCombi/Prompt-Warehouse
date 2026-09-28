@@ -3,22 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: CaterCombi Warehouse Wallboard API
+  description: API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
-  - name: dashboard
-    description: Wallboard dashboard data
+  - name: auth
+    description: Authentication operations
+  - name: assets
+    description: Warehouse asset operations
+  - name: sync
+    description: AMT and Shopify availability sync
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -26,34 +29,1128 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /health:
-    get:
-      operationId: getUpstreamHealth
-      tags: [health]
-      summary: Upstream connections health
-      description: Returns health status of Graph API and Power BI connections
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Health status of upstream connections
+          description: Successful login
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UpstreamHealth"
-  /dashboard:
-    get:
-      operationId: getDashboard
-      tags: [dashboard]
-      summary: Get wallboard dashboard data
-      description: Returns shipping today, priority ovens, and engineer daily average
-      responses:
-        "200":
-          description: Dashboard data
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DashboardData"
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user info
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /assets:
+    get:
+      operationId: getAssets
+      tags: [assets]
+      summary: List all assets from Microsoft Lists
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Search by asset number, manufacturer, or model
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by status
+      responses:
+        "200":
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Asset"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: createAsset
+      tags: [assets]
+      summary: Add a new asset to Microsoft Lists
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetInput"
+      responses:
+        "201":
+          description: Asset created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /assets/low-stock:
+    get:
+      operationId: getLowStockProducts
+      tags: [assets]
+      summary: List Rational product combinations with exactly one available AMT asset
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Low-stock product combinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LowStockProduct"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /assets/{id}:
+    get:
+      operationId: getAsset
+      tags: [assets]
+      summary: Get a single asset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      operationId: updateAsset
+      tags: [assets]
+      summary: Update an asset (e.g. change status)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetInput"
+      responses:
+        "200":
+          description: Updated asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /assets/stats:
+    get:
+      operationId: getAssetStats
+      tags: [assets]
+      summary: Get asset counts grouped by status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Asset stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetStats"
+
+  /sync/overview:
+    get:
+      operationId: getSyncOverview
+      tags: [sync]
+      summary: Compare AMT availability with Shopify product visibility
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current AMT and Shopify comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncOverview"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream service error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sync/run:
+    post:
+      operationId: runSync
+      tags: [sync]
+      summary: Apply safe Shopify visibility changes from AMT status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sync results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncRunResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream service error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-desk/summary:
+    get:
+      operationId: getServiceDeskSummary
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Summary, content: {application/json: {schema: {$ref: "#/components/schemas/ServiceDeskSummary"}}}}}
+  /service-desk/trends:
+    get:
+      operationId: getServiceDeskTrends
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Trends, content: {application/json: {schema: {$ref: "#/components/schemas/ServiceDeskTrends"}}}}}
+  /service-desk/top-assets:
+    get:
+      operationId: getServiceDeskTopAssets
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Top assets, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskTopAsset"}}}}}}
+  /service-desk/upcoming-jobs:
+    get:
+      operationId: getServiceDeskUpcomingJobs
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Upcoming jobs, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskUpcomingJob"}}}}}}
+  /service-desk/rental-pins:
+    get:
+      operationId: getServiceDeskRentalPins
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Rental pins, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskRentalPin"}}}}}}
+  /service-desk/map:
+    get:
+      operationId: getServiceDeskMap
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Map pins, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskRentalPin"}}}}}}
+  /service-desk/ingestion-log:
+    get:
+      operationId: getServiceDeskIngestionLog
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Ingestion history, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskIngestionLog"}}}}}}
+  /service-desk/dashboard/asset-history:
+    get:
+      operationId: getServiceDeskAssetHistory
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      parameters: [{name: assetRef, in: query, required: true, schema: {type: string}}]
+      responses: {"200": {description: Asset history, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServiceDeskAssetHistory"}}}}}}
+  /service-desk/upload-csv:
+    post:
+      operationId: uploadServiceDeskCsv
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      parameters: [{name: filename, in: query, required: true, schema: {type: string}}, {name: kind, in: query, required: false, schema: {type: string, enum: [completed, outstanding], default: completed}}]
+      requestBody: {required: true, content: {text/csv: {schema: {type: string}}}}
+      responses: {"200": {description: Imported, content: {application/json: {schema: {$ref: "#/components/schemas/ServiceDeskUploadResult"}}}}}
+  /service-desk/import-sqlite:
+    post:
+      operationId: importServiceDeskSqlite
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: Historical Service Desk import result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ServiceDeskLegacyImportResult"}
+        "400":
+          description: Invalid Service Desk database
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+  /service-desk/sync:
+    post:
+      operationId: syncServiceDesk
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: Sync result, content: {application/json: {schema: {$ref: "#/components/schemas/ServiceDeskSyncResult"}}}}}
+  /service-desk/hubspot/properties:
+    get:
+      operationId: getServiceDeskHubSpotProperties
+      tags: [service-desk]
+      security: [{ bearerAuth: [] }]
+      responses: {"200": {description: HubSpot properties, content: {application/json: {schema: {type: object, additionalProperties: true}}}}}
+
+  /marketing/overview:
+    get:
+      operationId: getMarketingOverview
+      tags: [marketing]
+      summary: Get the marketing performance overview
+      security:
+        - bearerAuth: []
+      description: Returns unified sample-ready performance data for SEO, analytics, paid campaigns, and HubSpot outcomes.
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [rolling, month]
+            default: rolling
+        - name: month
+          in: query
+          required: false
+          description: Calendar month in YYYY-MM format when period is month.
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+      responses:
+        "200":
+          description: Marketing overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketingOverview"
+  /marketing/recommendations:
+    get:
+      operationId: listMarketingRecommendations
+      tags: [marketing]
+      summary: List prioritized marketing recommendations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Prioritized recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketingRecommendation"
+  /marketing/recommendations/{id}:
+    patch:
+      operationId: updateMarketingRecommendation
+      tags: [marketing]
+      summary: Update recommendation status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationUpdate"
+      responses:
+        "200":
+          description: Updated recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketingRecommendation"
+        "404":
+          description: Recommendation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
+    OverviewKpi:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        change:
+          type: number
+        trend:
+          type: string
+          enum: [up, down, flat]
+        source:
+          type: string
+        isSample:
+          type: boolean
+      required: [key, label, value, change, trend, source, isSample]
+    TrendPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        organicSessions:
+          type: number
+        paidSessions:
+          type: number
+        qualifiedLeads:
+          type: number
+        spend:
+          type: number
+      required: [date, organicSessions, paidSessions, qualifiedLeads, spend]
+    ChannelMix:
+      type: object
+      properties:
+        channel:
+          type: string
+        sessions:
+          type: number
+        leads:
+          type: number
+        conversionRate:
+          type: number
+        costPerLead:
+          type: number
+        color:
+          type: string
+      required: [channel, sessions, leads, conversionRate, costPerLead, color]
+    SeoKeyword:
+      type: object
+      properties:
+        keyword:
+          type: string
+        intent:
+          type: string
+        position:
+          type: number
+        change:
+          type: number
+        volume:
+          type: number
+        difficulty:
+          type: number
+        opportunity:
+          type: string
+          enum: [high, medium, low]
+        landingPage:
+          type: string
+        clicks:
+          type: number
+        impressions:
+          type: number
+        ctr:
+          type: number
+          description: Click-through rate as a percentage.
+        averagePosition:
+          type: number
+      required: [keyword, intent, position, change, volume, difficulty, opportunity, landingPage, clicks, impressions, ctr, averagePosition]
+    SeoVisibility:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [live, reference]
+        property:
+          type: ["string", "null"]
+        startDate:
+          type: string
+        endDate:
+          type: string
+        comparisonStartDate:
+          type: string
+        comparisonEndDate:
+          type: string
+        clicks:
+          type: number
+        impressions:
+          type: number
+        ctr:
+          type: number
+          description: Click-through rate as a percentage.
+        averagePosition:
+          type: number
+        clicksChange:
+          type: number
+        impressionsChange:
+          type: number
+        queryCount:
+          type: number
+        isSample:
+          type: boolean
+        fallbackReason:
+          type: string
+      required: [source, property, startDate, endDate, comparisonStartDate, comparisonEndDate, clicks, impressions, ctr, averagePosition, clicksChange, impressionsChange, queryCount, isSample, fallbackReason]
+    SourceSnapshotKpi:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        change:
+          type: number
+        trend:
+          type: string
+          enum: [up, down, flat]
+        comparison:
+          type: string
+        targetPercent:
+          type: number
+        targetValue:
+          type: string
+      required: [key, label, value, change, trend, comparison, targetPercent, targetValue]
+    SourceMix:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+        share:
+          type: number
+      required: [label, value, share]
+    SourcePipelineBoard:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+        displayValue:
+          type: string
+      required: [label, value, displayValue]
+    SourceMonthlyTrend:
+      type: object
+      properties:
+        date:
+          type: string
+        dealsCreated:
+          type: number
+        adSpend:
+          type: number
+        costPerDeal:
+          type: number
+      required: [date, dealsCreated, adSpend, costPerDeal]
+    SourceSpendChannel:
+      type: object
+      properties:
+        channel:
+          type: string
+        spend:
+          type: number
+        spendShare:
+          type: number
+        impressions:
+          type: number
+        clicks:
+          type: number
+        conversions:
+          type: number
+        costPerConversion:
+          type: number
+      required: [channel, spend, spendShare, impressions, clicks, conversions, costPerConversion]
+    SourceCampaign:
+      type: object
+      properties:
+        name:
+          type: string
+        spend:
+          type: number
+        impressions:
+          type: number
+        clicks:
+          type: number
+        conversions:
+          type: number
+        costPerConversion:
+          type: number
+        costPerConversionLabel:
+          type: string
+      required: [name, spend, impressions, clicks, conversions, costPerConversion, costPerConversionLabel]
+    ClarityDimension:
+      type: object
+      properties:
+        value:
+          type: string
+        sessions:
+          type: number
+        users:
+          type: number
+        botSessions:
+          type: number
+        pagesPerSession:
+          type: number
+      required: [value, sessions, users, botSessions, pagesPerSession]
+    ClarityBehaviorMetric:
+      type: object
+      properties:
+        sessions:
+          type: number
+        rate:
+          type: number
+        pages:
+          type: number
+        events:
+          type: number
+      required: [sessions, rate, pages, events]
+    ClarityBehavior:
+      type: object
+      properties:
+        deadClicks:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+        excessiveScrolls:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+        rageClicks:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+        quickbacks:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+        scriptErrors:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+        errorClicks:
+          $ref: "#/components/schemas/ClarityBehaviorMetric"
+      required: [deadClicks, excessiveScrolls, rageClicks, quickbacks, scriptErrors, errorClicks]
+    ClarityEngagementTime:
+      type: object
+      properties:
+        activeTime:
+          type: number
+        totalTime:
+          type: number
+      required: [activeTime, totalTime]
+    ClarityPage:
+      type: object
+      properties:
+        url:
+          type: string
+        visits:
+          type: number
+      required: [url, visits]
+    ClaritySnapshot:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [live, unavailable]
+        capturedAt:
+          type: string
+        windowStart:
+          type: string
+        windowEnd:
+          type: string
+        numOfDays:
+          type: number
+        sessions:
+          type: number
+        users:
+          type: number
+        botSessions:
+          type: number
+        pagesPerSession:
+          type: number
+        dimension:
+          type: string
+        dimensions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClarityDimension"
+        behavior:
+          $ref: "#/components/schemas/ClarityBehavior"
+        scrollDepth:
+          type: number
+        engagementTime:
+          $ref: "#/components/schemas/ClarityEngagementTime"
+        popularPages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClarityPage"
+        enhancedMetricsAvailable:
+          type: boolean
+        message:
+          type: string
+      required: [source, capturedAt, windowStart, windowEnd, numOfDays, sessions, users, botSessions, pagesPerSession, dimension, dimensions, behavior, scrollDepth, engagementTime, popularPages, enhancedMetricsAvailable, message]
+    SourceDashboardSnapshot:
+      type: object
+      properties:
+        capturedAt:
+          type: string
+        headline:
+          type: string
+        kpis:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceSnapshotKpi"
+        ga4SessionsTotal:
+          type: number
+        ga4Channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceMix"
+        hubspotContactsTotal:
+          type: number
+        hubspotNewContacts:
+          type: number
+        hubspotDealsCreated:
+          type: number
+        hubspotContactSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceMix"
+        pipelineTotal:
+          type: number
+        pipelineBoards:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourcePipelineBoard"
+        sixMonthTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceMonthlyTrend"
+        spendTotal:
+          type: number
+        adsImpressionsTotal:
+          type: number
+        spendByChannel:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceSpendChannel"
+        campaigns:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceCampaign"
+        clarity:
+          $ref: "#/components/schemas/ClaritySnapshot"
+        caveat:
+          type: string
+      required: [capturedAt, headline, kpis, ga4SessionsTotal, ga4Channels, hubspotContactsTotal, hubspotNewContacts, hubspotDealsCreated, hubspotContactSources, pipelineTotal, pipelineBoards, sixMonthTrend, spendTotal, adsImpressionsTotal, spendByChannel, campaigns, clarity, caveat]
+    ShopifySalesYear:
+      type: object
+      properties:
+        year:
+          type: number
+        isPartial:
+          type: boolean
+        orders:
+          type: number
+        netSalesIncVat:
+          type: number
+        netSalesExVat:
+          type: number
+        averageOrderValueIncVat:
+          type: number
+        vsPreviousGrowth:
+          type: number
+        vsTwoYearGrowth:
+          type: number
+      required: [year, isPartial, orders, netSalesIncVat, netSalesExVat, averageOrderValueIncVat, vsPreviousGrowth, vsTwoYearGrowth]
+    ShopifySalesMonth:
+      type: object
+      properties:
+        month:
+          type: string
+        sales2024:
+          type: number
+        sales2025:
+          type: number
+        sales2026:
+          type: number
+        orders2024:
+          type: number
+        orders2025:
+          type: number
+        orders2026:
+          type: number
+      required: [month, sales2024, sales2025, sales2026, orders2024, orders2025, orders2026]
+    ShopifySalesBreakdown:
+      type: object
+      properties:
+        label:
+          type: string
+        sales2024:
+          type: number
+        sales2025:
+          type: number
+        sales2026:
+          type: number
+        count2024:
+          type: number
+        count2025:
+          type: number
+        count2026:
+          type: number
+      required: [label, sales2024, sales2025, sales2026, count2024, count2025, count2026]
+    ShopifySalesReport:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [workbook, live]
+        capturedAt:
+          type: string
+        dataStart:
+          type: string
+        dataEnd:
+          type: string
+        cutoffMonth:
+          type: number
+        cutoffDay:
+          type: number
+        exportOrders:
+          type: number
+        includedOrders:
+          type: number
+        excludedVoidedOrders:
+          type: number
+        refundsDeducted:
+          type: number
+        ytd:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesYear"
+        fullYear:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesYear"
+        monthly:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesMonth"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesBreakdown"
+        customerTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesBreakdown"
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopifySalesBreakdown"
+        caveat:
+          type: string
+      required: [source, capturedAt, dataStart, dataEnd, cutoffMonth, cutoffDay, exportOrders, includedOrders, excludedVoidedOrders, refundsDeducted, ytd, fullYear, monthly, categories, customerTypes, regions, caveat]
+    SourceStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [sample, connected, needs_connection]
+        lastSynced:
+          type: string
+      required: [name, label, status, lastSynced]
+    MarketingRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [seo, paid, content, conversion]
+        priority:
+          type: string
+          enum: [high, medium, low]
+        impact:
+          type: string
+        effort:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, done, dismissed]
+        metric:
+          type: string
+        isSample:
+          type: boolean
+      required: [id, title, description, category, priority, impact, effort, status, metric, isSample]
+    RecommendationUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, done, dismissed]
+      required: [status]
+    MarketingOverview:
+      type: object
+      properties:
+        asOf:
+          type: string
+        dataMode:
+          type: string
+          enum: [sample, connected, mixed]
+        kpis:
+          type: array
+          items:
+            $ref: "#/components/schemas/OverviewKpi"
+        trend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelMix"
+        seoKeywords:
+          type: array
+          items:
+            $ref: "#/components/schemas/SeoKeyword"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceStatus"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketingRecommendation"
+        sourceSnapshot:
+          $ref: "#/components/schemas/SourceDashboardSnapshot"
+        shopifySales:
+          $ref: "#/components/schemas/ShopifySalesReport"
+        seoVisibility:
+          $ref: "#/components/schemas/SeoVisibility"
+      required: [asOf, dataMode, kpis, trend, channels, seoKeywords, sources, recommendations, sourceSnapshot, shopifySales, seoVisibility]
+
+
+    ServiceDeskLegacyImportResult:
+      type: object
+      required: [alreadyImported, counts, mapReady]
+      properties:
+        alreadyImported: {type: boolean}
+        mapReady: {type: integer}
+        counts:
+          type: object
+          required: [tickets, jobs, assets, sites, postcodes, ingestionLogs, processedFiles]
+          properties:
+            tickets: {type: integer}
+            jobs: {type: integer}
+            assets: {type: integer}
+            sites: {type: integer}
+            postcodes: {type: integer}
+            ingestionLogs: {type: integer}
+            processedFiles: {type: integer}
+    ServiceDeskSummary:
+      type: object
+      additionalProperties: true
+      required: [openTicketsNow, ticketsThisMonth, jobsThisMonth, activeDaysThisMonth, lastSyncedAt, lastSyncStatus, lastSyncError, outstandingJobsLastUpdatedAt]
+      properties:
+        openTicketsNow: {type: integer}
+        ticketsThisMonth: {type: integer}
+        jobsThisMonth: {type: integer}
+        activeDaysThisMonth: {type: integer}
+        lastSyncedAt: {type: [string, "null"]}
+        lastSyncStatus: {type: string}
+        lastSyncError: {type: [string, "null"]}
+        outstandingJobsLastUpdatedAt: {type: [string, "null"]}
+    ServiceDeskTrends:
+      type: object
+      required: [daily, monthly, period]
+      properties:
+        daily: {type: array, items: {type: object, additionalProperties: true}}
+        monthly: {type: array, items: {type: object, additionalProperties: true}}
+        period: {type: integer}
+    ServiceDeskTopAsset:
+      type: object
+      additionalProperties: true
+      required: [assetId, assetRef, ticketCount, jobCount, totalCount, totalJobCount, lastServiceDate, installationDate]
+      properties:
+        assetId: {type: string}
+        assetRef: {type: string}
+        ticketCount: {type: integer}
+        jobCount: {type: integer}
+        totalCount: {type: integer}
+        totalJobCount: {type: integer}
+        lastServiceDate: {type: [string, "null"]}
+        installationDate: {type: [string, "null"]}
+    ServiceDeskUpcomingJob:
+      type: object
+      additionalProperties: true
+      properties:
+        jobRef: {type: [string, "null"]}
+        jobType: {type: [string, "null"]}
+        site: {type: [string, "null"]}
+        assetRef: {type: [string, "null"]}
+        engineer: {type: [string, "null"]}
+        status: {type: [string, "null"]}
+        scheduledDate: {type: string}
+    ServiceDeskRentalPin:
+      type: object
+      required: [assetRef, description, customer, site, postcode, lat, lng, lastServicedDate, serviceType]
+      properties:
+        assetRef: {type: [string, "null"]}
+        description: {type: [string, "null"]}
+        customer: {type: [string, "null"]}
+        site: {type: [string, "null"]}
+        postcode: {type: [string, "null"]}
+        lat: {type: number}
+        lng: {type: number}
+        lastServicedDate: {type: [string, "null"]}
+        serviceType: {type: [string, "null"]}
+    ServiceDeskIngestionLog:
+      type: object
+      additionalProperties: true
+      required: [id, timestamp, source, status, filesFound, filesProcessed, ticketsImported, errorMessage]
+      properties:
+        id: {type: integer}
+        timestamp: {type: string}
+        source: {type: string}
+        status: {type: string}
+        filesFound: {type: [integer, "null"]}
+        filesProcessed: {type: [integer, "null"]}
+        ticketsImported: {type: [integer, "null"]}
+        errorMessage: {type: [string, "null"]}
+    ServiceDeskAssetHistory:
+      type: object
+      required: [jobRef, jobType, site, engineer, completionDate]
+      properties:
+        jobRef: {type: string}
+        jobType: {type: [string, "null"]}
+        site: {type: [string, "null"]}
+        engineer: {type: [string, "null"]}
+        completionDate: {type: string}
+    ServiceDeskUploadResult:
+      type: object
+      required: [filename, rowsImported]
+      properties:
+        filename: {type: string}
+        rowsImported: {type: integer}
+    ServiceDeskSourceResult:
+      type: object
+      required: [success, count, error]
+      properties:
+        success: {type: boolean}
+        count: {type: integer}
+        error: {type: [string, "null"]}
+    ServiceDeskSyncResult:
+      type: object
+      required: [success, message, hubspot, ftps]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        hubspot: {$ref: "#/components/schemas/ServiceDeskSourceResult"}
+        ftps: {$ref: "#/components/schemas/ServiceDeskSourceResult"}
     HealthStatus:
       type: object
       properties:
@@ -61,37 +1158,174 @@ components:
           type: string
       required:
         - status
-    UpstreamHealth:
+
+    LoginRequest:
       type: object
-      required: [graph, powerBi]
       properties:
-        graph:
-          type: object
-          required: [ok, message]
-          properties:
-            ok:
-              type: boolean
-            message:
-              type: string
-        powerBi:
-          type: object
-          required: [ok, message]
-          properties:
-            ok:
-              type: boolean
-            message:
-              type: string
-    OvenItem:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
       type: object
-      required: [title, status]
       properties:
-        title:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+      required:
+        - id
+        - username
+        - displayName
+
+    Asset:
+      type: object
+      properties:
+        id:
+          type: string
+        assetNumber:
           type: string
         status:
           type: string
-        shippingDate:
-          type: ["string", "null"]
-        serial:
+        manufacturer:
+          type: string
+        model:
+          type: string
+        size:
+          type: string
+        fuel:
+          type: string
+        features:
+          type: string
+        datePurchased:
+          type: string
+        dateRetested:
+          type: string
+        needsRetest:
+          type: boolean
+        supplier:
+          type: string
+        customer:
+          type: string
+        createdAt:
+          type: string
+        modifiedAt:
+          type: string
+      required:
+        - id
+        - assetNumber
+        - status
+        - dateRetested
+        - needsRetest
+
+    AssetInput:
+      type: object
+      properties:
+        assetNumber:
+          type: string
+        status:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        size:
+          type: string
+        fuel:
+          type: string
+        features:
+          type: string
+        datePurchased:
+          type: string
+        supplier:
+          type: string
+        customer:
+          type: string
+      required:
+        - assetNumber
+        - status
+
+    AssetStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        byStatus:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: string
+              count:
+                type: integer
+            required:
+              - status
+              - count
+      required:
+        - total
+        - byStatus
+
+    SyncSummary:
+      type: object
+      properties:
+        amtTotal:
+          type: integer
+        amtAvailable:
+          type: integer
+        amtBooked:
+          type: integer
+        shopifyProducts:
+          type: integer
+        matched:
+          type: integer
+        readyToSell:
+          type: integer
+        needsUnpublish:
+          type: integer
+        needsPublish:
+          type: integer
+        missingInShopify:
+          type: integer
+        missingInAmt:
+          type: integer
+      required:
+        - amtTotal
+        - amtAvailable
+        - amtBooked
+        - shopifyProducts
+        - matched
+        - readyToSell
+        - needsUnpublish
+        - needsPublish
+        - missingInShopify
+        - missingInAmt
+
+    SyncRow:
+      type: object
+      properties:
+        key:
+          type: string
+        assetNumber:
+          type: string
+        assetStatus:
           type: ["string", "null"]
         manufacturer:
           type: ["string", "null"]
@@ -99,42 +1333,138 @@ components:
           type: ["string", "null"]
         size:
           type: ["string", "null"]
+        shopifyProductId:
+          type: ["string", "null"]
+        shopifyProductTitle:
+          type: ["string", "null"]
+        shopifyProductStatus:
+          type: ["string", "null"]
+        shopifyPublished:
+          type: ["boolean", "null"]
+        action:
+          type: string
+          enum: [ready, unpublish, publish, missing_in_shopify, missing_in_amt]
+        reason:
+          type: string
+      required:
+        - key
+        - assetNumber
+        - assetStatus
+        - manufacturer
+        - model
+        - size
+        - shopifyProductId
+        - shopifyProductTitle
+        - shopifyProductStatus
+        - shopifyPublished
+        - action
+        - reason
+
+    SyncOverview:
+      type: object
+      properties:
+        checkedAt:
+          type: string
+        shopName:
+          type: string
+        shopDomain:
+          type: string
+        publicationName:
+          type: string
+        summary:
+          $ref: "#/components/schemas/SyncSummary"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncRow"
+      required:
+        - checkedAt
+        - shopName
+        - shopDomain
+        - publicationName
+        - summary
+        - rows
+
+    LowStockProduct:
+      type: object
+      properties:
+        key:
+          type: string
+        brand:
+          type: string
+        model:
+          type: string
+        shopifySize:
+          type: string
+        amtSize:
+          type: string
         fuel:
-          type: ["string", "null"]
-        urgency:
-          type: ["string", "null"]
-        additionalInfo:
-          type: ["string", "null"]
-    EngineerStat:
+          type: string
+        availableCount:
+          type: integer
+        assetNumbers:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LowStockRecommendation"
+      required:
+        - key
+        - brand
+        - model
+        - shopifySize
+        - amtSize
+        - fuel
+        - availableCount
+        - assetNumbers
+        - recommendations
+
+    LowStockRecommendation:
       type: object
-      required: [name, kpi]
       properties:
-        name:
+        assetNumber:
           type: string
-        kpi:
-          type: number
-    DashboardData:
+        status:
+          type: string
+      required: [assetNumber, status]
+
+    SyncActionResult:
       type: object
-      required: [shippingToday, priorityOvens, engineerStats, lastUpdated, engineerLastFetched, totalOvensFixed]
       properties:
-        shippingToday:
-          type: array
-          items:
-            $ref: "#/components/schemas/OvenItem"
-        priorityOvens:
-          type: array
-          items:
-            $ref: "#/components/schemas/OvenItem"
-        engineerStats:
-          type: array
-          items:
-            $ref: "#/components/schemas/EngineerStat"
-        lastUpdated:
+        key:
           type: string
-          description: ISO timestamp of last successful data fetch
-        engineerLastFetched:
+        action:
           type: string
-          description: ISO timestamp of last successful engineer stats fetch
-        totalOvensFixed:
-          type: number
-          description: Count of items with DateTestedOK set in the current month
+          enum: [unpublished, published, skipped, failed]
+        message:
+          type: string
+      required:
+        - key
+        - action
+        - message
+
+    SyncRunResult:
+      type: object
+      properties:
+        checkedAt:
+          type: string
+        summary:
+          $ref: "#/components/schemas/SyncSummary"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncActionResult"
+      required:
+        - checkedAt
+        - summary
+        - actions
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
