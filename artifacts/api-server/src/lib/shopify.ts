@@ -304,12 +304,28 @@ const RATIONAL_SIZES = [
 ] as const;
 const RATIONAL_FUELS = ["E", "G"] as const;
 
+const CONTROL_ROOM_IGNORED_ASSET_NUMBERS = new Set(["4112", "4113"]);
+const CONTROL_ROOM_CATERCOMBI_ACCESSORY_ASSET_NUMBERS = new Set(["X367"]);
+
 function normalized(value: string | null | undefined) {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function isCatercombiAccessory(asset: Asset) {
+  return (
+    CONTROL_ROOM_CATERCOMBI_ACCESSORY_ASSET_NUMBERS.has(asset.assetNumber.trim().toUpperCase()) ||
+    /^catercombi accessor(?:y|ies)$/.test(normalized(asset.manufacturer))
+  );
+}
+
 function isShopifyVisible(product: ShopifyProduct) {
   return product.published && normalized(product.status) === "active";
+}
+
+function getControlRoomAssets(assets: Asset[]) {
+  return assets.filter(
+    (asset) => !CONTROL_ROOM_IGNORED_ASSET_NUMBERS.has(asset.assetNumber.trim()),
+  );
 }
 
 function normalizedFuel(value: string | null | undefined) {
@@ -323,7 +339,7 @@ function excludedFromMissingShopify(asset: Asset) {
   const manufacturer = normalized(asset.manufacturer);
   const model = normalized(asset.model);
   return (
-    manufacturer === "catercombi accessory" ||
+    isCatercombiAccessory(asset) ||
     manufacturer === "accessory" ||
     manufacturer === "accessories" ||
     /(?:^|\W)ultra[\s-]*vents?(?:$|\W)/i.test(`${manufacturer} ${model}`)
@@ -331,6 +347,7 @@ function excludedFromMissingShopify(asset: Asset) {
 }
 
 export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
+  const controlRoomAssets = getControlRoomAssets(assets);
   const mappings: Array<{
     brand: string;
     model: string;
@@ -346,7 +363,7 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
 
   return mappings
     .map((mapping) => {
-      const matchingAssets = assets.filter(
+      const matchingAssets = controlRoomAssets.filter(
         (asset) =>
           normalized(asset.manufacturer) === normalized(mapping.brand) &&
           normalized(asset.model) === normalized(mapping.model) &&
@@ -354,7 +371,7 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
           normalizedFuel(asset.fuel) === mapping.fuel,
       );
       const availableAssets = matchingAssets.filter(isAvailable);
-       const recommendations = assets
+       const recommendations = controlRoomAssets
          .filter(
            (asset) =>
              isRecommendationStatus(asset) &&
@@ -420,6 +437,7 @@ function buildRows(assets: Asset[], products: ShopifyProduct[]): SyncRow[] {
     }
 
     matchedProductIds.add(product.id);
+    if (isCatercombiAccessory(asset)) continue;
     const available = isAvailable(asset);
     const shopifyVisible = isShopifyVisible(product);
     const action = available
@@ -455,6 +473,14 @@ function buildRows(assets: Asset[], products: ShopifyProduct[]): SyncRow[] {
 
   for (const product of products) {
     if (matchedProductIds.has(product.id)) continue;
+    if (
+      product.skus.length > 0 &&
+      product.skus.every((sku) =>
+        CONTROL_ROOM_IGNORED_ASSET_NUMBERS.has(sku.trim()),
+      )
+    ) {
+      continue;
+    }
     rows.push({
       key: `shopify:${product.id}`,
       assetNumber: product.skus[0] ?? "No SKU",
@@ -499,6 +525,7 @@ function summarize(assets: Asset[], products: ShopifyProduct[], rows: SyncRow[])
 }
 
 async function loadComparison(assets: Asset[]) {
+  const controlRoomAssets = getControlRoomAssets(assets);
   const context = await getShopContext();
   const { shopDomain } = getShopifyConfig();
   if (context.shop.myshopifyDomain.toLowerCase() !== shopDomain) {
@@ -512,13 +539,13 @@ async function loadComparison(assets: Asset[]) {
   }
 
   const products = await getProducts(publication.id);
-  const rows = buildRows(assets, products);
+  const rows = buildRows(controlRoomAssets, products);
   return {
     context,
     publication,
     products,
     rows,
-    summary: summarize(assets, products, rows),
+    summary: summarize(controlRoomAssets, products, rows),
   };
 }
 
