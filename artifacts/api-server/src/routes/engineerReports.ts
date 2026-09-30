@@ -84,7 +84,12 @@ router.post("/generate", async (req, res) => {
     };
     res.json(result);
   } catch (error) {
-    req.log.error({ error, assetNumber, recordId }, "Failed to generate Engineer's Report");
+    const errorName = error instanceof Error ? error.name : typeof error;
+    const errorMessage = error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    req.log.error(
+      { errorName, errorMessage: errorMessage.slice(0, 1000), assetNumber, recordId },
+      "Failed to generate Engineer's Report",
+    );
     res.status(502).json({ message: "Could not generate the report. No report files were saved to SharePoint." });
   }
 });
