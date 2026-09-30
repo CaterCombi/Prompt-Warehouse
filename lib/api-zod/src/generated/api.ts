@@ -523,7 +523,6 @@ export const GenerateEngineerReportBody = zod.object({
 export const GenerateEngineerReportResponse = zod.object({
   "reportNumber": zod.string(),
   "fileName": zod.string(),
-  "sharePointUrl": zod.string().url(),
   "generatedAt": zod.coerce.date(),
   "generatedBy": zod.string(),
   "warnings": zod.array(zod.string()),

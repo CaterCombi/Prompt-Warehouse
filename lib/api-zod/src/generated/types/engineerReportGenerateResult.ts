@@ -9,7 +9,6 @@
 export interface EngineerReportGenerateResult {
   reportNumber: string;
   fileName: string;
-  sharePointUrl: string;
   generatedAt: Date;
   generatedBy: string;
   warnings: string[];
