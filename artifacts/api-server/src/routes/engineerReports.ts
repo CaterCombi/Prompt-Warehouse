@@ -90,7 +90,9 @@ router.post("/generate", async (req, res) => {
       { errorName, errorMessage: errorMessage.slice(0, 1000), assetNumber, recordId },
       "Failed to generate Engineer's Report",
     );
-    res.status(502).json({ message: "Could not generate the report. No report files were saved to SharePoint." });
+    res.status(502).json({
+      message: "The report PDF could not be generated. No file was created or uploaded to SharePoint. Try again, and contact a manager if the problem continues.",
+    });
   }
 });
 
