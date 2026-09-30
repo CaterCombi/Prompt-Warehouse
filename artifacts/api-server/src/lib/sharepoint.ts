@@ -76,6 +76,16 @@ async function graphPatch(path: string, body: unknown): Promise<unknown> {
   return graphRequest("PATCH", path, body);
 }
 
+function assertGraphPath(path: string) {
+  if (
+    !path.startsWith("/sites/") &&
+    !path.startsWith("/drives/") &&
+    !path.startsWith(`${GRAPH_BASE}/`)
+  ) {
+    throw new Error("SharePoint Graph path must be scoped to a site or drive.");
+  }
+}
+
 // Cached site ID and list ID
 let resolvedSiteId: string | null = null;
 let resolvedListId: string | null = null;
@@ -250,5 +260,77 @@ export async function getAssetStats() {
   return {
     total: assets.length,
     byStatus: Array.from(statusMap.entries()).map(([status, count]) => ({ status, count })),
+  };
+}
+
+export async function getSharePointSiteId(): Promise<string> {
+  return getSiteId();
+}
+
+export async function getSharePointGraphJson(path: string): Promise<unknown> {
+  assertGraphPath(path);
+  return graphGet(path);
+}
+
+export async function postSharePointGraphJson(path: string, body: unknown): Promise<unknown> {
+  assertGraphPath(path);
+  return graphPost(path, body);
+}
+
+export class SharePointConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SharePointConflictError";
+  }
+}
+
+export interface SharePointDriveFile {
+  id: string;
+  name: string;
+  webUrl?: string;
+  size?: number;
+}
+
+export async function uploadSharePointDriveFile(
+  driveId: string,
+  parentItemId: string,
+  fileName: string,
+  content: Uint8Array,
+  contentType: string,
+): Promise<SharePointDriveFile> {
+  if (!fileName || /[\\/:*?"<>|]/.test(fileName)) {
+    throw new Error("SharePoint file name contains unsupported characters.");
+  }
+  const token = await getAccessToken();
+  const path = `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(parentItemId)}:/${encodeURIComponent(fileName)}:/content?@microsoft.graph.conflictBehavior=fail`;
+  const url = `${GRAPH_BASE}${path}`;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": contentType,
+    },
+    body: content,
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    id?: string;
+    name?: string;
+    webUrl?: string;
+    size?: number;
+    error?: { message?: string; code?: string };
+  };
+  if (response.status === 409 || payload.error?.code === "nameAlreadyExists") {
+    throw new SharePointConflictError(payload.error?.message ?? `A file named "${fileName}" already exists.`);
+  }
+  if (!response.ok || !payload.id || !payload.name) {
+    throw new Error(
+      `SharePoint file upload failed (${response.status}): ${payload.error?.message ?? JSON.stringify(payload)}`,
+    );
+  }
+  return {
+    id: payload.id,
+    name: payload.name,
+    webUrl: payload.webUrl,
+    size: payload.size,
   };
 }

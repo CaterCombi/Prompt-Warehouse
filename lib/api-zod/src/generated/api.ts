@@ -260,7 +260,13 @@ export const GetServiceDeskSummaryResponse = zod.object({
   "lastScheduleImportAt": zod.string().nullable(),
   "lastScheduleImportRows": zod.number().nullable(),
   "lastScheduleImportStatus": zod.enum(['never', 'healthy', 'small', 'empty', 'error']),
-  "lastScheduleImportError": zod.string().nullable()
+  "lastScheduleImportError": zod.string().nullable(),
+  "lastScheduleImportFreshness": zod.enum(['never', 'fresh', 'stale']).describe('Freshness of the most recent successful schedule snapshot, based on a 24-hour window.'),
+  "lastScheduleImportFreshnessWindowHours": zod.number(),
+  "lastSchedulePollAt": zod.coerce.date().nullable(),
+  "lastSchedulePollStatus": zod.enum(['never', 'ok', 'error']),
+  "consecutiveSchedulePollFailures": zod.number(),
+  "lastSchedulePollFailureAt": zod.coerce.date().nullable()
 })
 
 
@@ -360,7 +366,82 @@ export const UploadServiceDeskCsvQueryParams = zod.object({
 
 export const UploadServiceDeskCsvResponse = zod.object({
   "filename": zod.string(),
-  "rowsImported": zod.number()
+  "rowsImported": zod.number(),
+  "kind": zod.string().optional()
+})
+
+
+export const PreviewServiceDeskScheduleQueryParams = zod.object({
+  "filename": zod.coerce.string()
+})
+
+export const PreviewServiceDeskScheduleResponse = zod.object({
+  "filename": zod.string(),
+  "additions": zod.array(zod.object({
+  "externalId": zod.string(),
+  "jobRef": zod.string().nullable(),
+  "jobType": zod.string().nullable(),
+  "assetRef": zod.string().nullable(),
+  "site": zod.string().nullable(),
+  "engineer": zod.string().nullable(),
+  "status": zod.string().nullable(),
+  "scheduledAt": zod.coerce.date()
+})),
+  "updates": zod.array(zod.object({
+  "before": zod.object({
+  "externalId": zod.string(),
+  "jobRef": zod.string().nullable(),
+  "jobType": zod.string().nullable(),
+  "assetRef": zod.string().nullable(),
+  "site": zod.string().nullable(),
+  "engineer": zod.string().nullable(),
+  "status": zod.string().nullable(),
+  "scheduledAt": zod.coerce.date()
+}),
+  "after": zod.object({
+  "externalId": zod.string(),
+  "jobRef": zod.string().nullable(),
+  "jobType": zod.string().nullable(),
+  "assetRef": zod.string().nullable(),
+  "site": zod.string().nullable(),
+  "engineer": zod.string().nullable(),
+  "status": zod.string().nullable(),
+  "scheduledAt": zod.coerce.date()
+})
+})),
+  "removals": zod.array(zod.object({
+  "externalId": zod.string(),
+  "jobRef": zod.string().nullable(),
+  "jobType": zod.string().nullable(),
+  "assetRef": zod.string().nullable(),
+  "site": zod.string().nullable(),
+  "engineer": zod.string().nullable(),
+  "status": zod.string().nullable(),
+  "scheduledAt": zod.coerce.date()
+})),
+  "unchangedCount": zod.number(),
+  "invalidRows": zod.array(zod.object({
+  "csvRowNumber": zod.number(),
+  "jobRef": zod.string().nullable(),
+  "scheduledValue": zod.string().nullable(),
+  "issues": zod.array(zod.enum(['missing_job_id', 'invalid_schedule_date']))
+})),
+  "currentFingerprint": zod.string(),
+  "incomingFingerprint": zod.string(),
+  "canConfirm": zod.boolean()
+})
+
+
+export const ConfirmServiceDeskScheduleQueryParams = zod.object({
+  "filename": zod.coerce.string(),
+  "currentFingerprint": zod.coerce.string(),
+  "incomingFingerprint": zod.coerce.string()
+})
+
+export const ConfirmServiceDeskScheduleResponse = zod.object({
+  "filename": zod.string(),
+  "rowsImported": zod.number(),
+  "kind": zod.string().optional()
 })
 
 
@@ -396,6 +477,58 @@ export const SyncServiceDeskResponse = zod.object({
 
 
 export const GetServiceDeskHubSpotPropertiesResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const GetEngineerReportAssetRecordsParams = zod.object({
+  "assetNumber": zod.coerce.string()
+})
+
+export const GetEngineerReportAssetRecordsResponse = zod.object({
+  "assetNumber": zod.string(),
+  "records": zod.array(zod.object({
+  "recordId": zod.string(),
+  "serviceDate": zod.coerce.date().nullable(),
+  "engineer": zod.string().nullable(),
+  "serialNumber": zod.string().nullable(),
+  "operatingHours": zod.string().nullable(),
+  "make": zod.string().nullable(),
+  "model": zod.string().nullable(),
+  "fuelType": zod.string().nullable(),
+  "parts": zod.array(zod.object({
+  "description": zod.string(),
+  "partNumber": zod.string().nullable(),
+  "quantity": zod.number(),
+  "matchedChecks": zod.array(zod.number()),
+  "matched": zod.boolean()
+})),
+  "checks": zod.array(zod.object({
+  "number": zod.number(),
+  "category": zod.string(),
+  "label": zod.string(),
+  "pass": zod.boolean(),
+  "fail": zod.boolean(),
+  "notApplicable": zod.boolean(),
+  "notes": zod.string()
+})),
+  "warnings": zod.array(zod.string())
+}))
+})
+
+
+export const GenerateEngineerReportBody = zod.object({
+  "assetNumber": zod.string(),
+  "recordId": zod.string()
+})
+
+export const GenerateEngineerReportResponse = zod.object({
+  "reportNumber": zod.string(),
+  "fileName": zod.string(),
+  "sharePointUrl": zod.string().url(),
+  "generatedAt": zod.coerce.date(),
+  "generatedBy": zod.string(),
+  "warnings": zod.array(zod.string()),
+  "pdfBase64": zod.string()
+})
 
 
 /**

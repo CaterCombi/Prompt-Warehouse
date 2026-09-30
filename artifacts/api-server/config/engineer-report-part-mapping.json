@@ -1,0 +1,46 @@
+{
+  "abbreviations": {
+    "f.inter.": "for intermediate",
+    "f.": "for"
+  },
+  "descriptionOverrides": {
+    "40.03.386P": "Cover, air inlet"
+  },
+  "rules": [
+    { "keywords": ["door gasket", "door seal"], "checks": [3] },
+    { "keywords": ["glass pane", "door glass", "fixing device", "inner glass", "outer glass"], "checks": [4] },
+    { "keywords": ["door catch", "door handle", "latch"], "checks": [5] },
+    { "keywords": ["door switch", "door contact", "magnetic switch"], "checks": [6] },
+    { "keywords": ["bulb socket", "bulb", "lamp", "light"], "checks": [11] },
+    { "keywords": ["drain trap", "cavity drain"], "checks": [12] },
+    { "keywords": ["cavity sensor", "cabinet sensor"], "checks": [13] },
+    { "keywords": ["core temperature probe", "core probe"], "checks": [14] },
+    { "keywords": ["mains cable", "plug"], "checks": [15] },
+    { "keywords": ["contactor", "relay"], "checks": [20] },
+    { "keywords": ["safety thermostat", "high limit", "safety temperature limiter"], "checks": [21] },
+    { "keywords": ["fuse"], "checks": [22] },
+    { "keywords": ["steam generator element", "steam generator heating element"], "checks": [25] },
+    { "keywords": ["gasket for heating element", "heating element gasket", "element gasket", "element seal"], "checks": [26] },
+    { "keywords": ["heating element"], "checks": [24], "exclude": ["gasket", "seal", "steam generator"] },
+    { "keywords": ["burner", "ignition", "ignition electrode"], "checks": [27] },
+    { "keywords": ["gas valve"], "checks": [28] },
+    { "keywords": ["fan motor"], "checks": [30, 32] },
+    { "keywords": ["fan wheel", "impeller"], "checks": [31] },
+    { "keywords": ["motor shaft gasket", "shaft seal"], "checks": [33] },
+    { "keywords": ["inspection lid gasket", "gasket for inspection lid"], "checks": [35] },
+    { "keywords": ["level electrode", "level sensor"], "checks": [36] },
+    { "keywords": ["drain pump", "steam generator pump"], "checks": [37] },
+    { "keywords": ["humidity sensor", "climate sensor"], "checks": [38] },
+    { "keywords": ["steam hose"], "checks": [39] },
+    { "keywords": ["solenoid valve", "inlet valve"], "checks": [41] },
+    { "keywords": ["inlet filter", "strainer"], "checks": [42] },
+    { "keywords": ["hand shower", "spray hose"], "checks": [44] },
+    { "keywords": ["quench", "condensing"], "checks": [45] },
+    { "keywords": ["drain pipe", "waste pipe"], "checks": [46] },
+    { "keywords": ["care container", "flap care container", "cleaning container"], "checks": [48] },
+    { "keywords": ["cleaning pump", "care pump"], "checks": [49] },
+    { "keywords": ["rinse arm", "spray nozzle"], "checks": [50] },
+    { "keywords": ["overlay", "control panel", "touchscreen", "dial", "pulse generator", "knob"], "checks": [52] },
+    { "keywords": ["air inlet pipe", "cover air inlet"], "checks": [] }
+  ]
+}
