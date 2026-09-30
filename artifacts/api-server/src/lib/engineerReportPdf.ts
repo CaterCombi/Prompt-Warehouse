@@ -117,14 +117,7 @@ function reportHtml(
   const secondChecklistPage = record.checks.slice(23);
   const partsTotal = record.parts.reduce((sum, part) => sum + part.quantity, 0);
   const workSummary = `Service carried out ${formattedDate} by ${record.engineer ?? "Not recorded"}. ${partsTotal} parts replaced (${record.parts.length} part types), as listed in section 5.`;
-  const fuelType = record.fuelType?.toLocaleLowerCase("en-GB") ?? "";
-  const fuelChoice = /^(electric|electricity)$/.test(fuelType)
-    ? "Electric"
-    : /^(gas|ng|lpg|natural gas|propane|butane)$/.test(fuelType)
-      ? "Gas (NG / LPG)"
-      : "";
   const yearOfManufacture: string | null = null;
-  const size: string | null = null;
   const powerSupply: string | null = null;
   const softwareVersion: string | null = null;
   const ctuFitted: string | null = null;
@@ -234,12 +227,12 @@ function reportHtml(
           <section class="section">
             <h2 class="section-title"><span class="number">2.</span><span>Oven details</span></h2>
             <div class="field-grid">
-              ${field("Make", record.make, { blank: true })}
-              ${field("Model", record.model, { blank: true })}
+              ${field("Make", record.make ?? record.assetDetails.manufacturer)}
+              ${field("Model", record.model ?? record.assetDetails.model)}
               ${field("Serial number", record.serialNumber)}
               ${field("Year of manufacture", yearOfManufacture)}
-              ${field("Size", size, { choices: ["6", "10", "20", "40 grid", "other"] })}
-              ${field("Fuel type", record.fuelType, { choices: ["Electric", "Gas (NG / LPG)"], selected: fuelChoice })}
+              ${field("Size (asset register)", record.assetDetails.size)}
+              ${field("Fuel / power source", record.fuelType ?? record.assetDetails.powerSource)}
               ${field("Power supply", powerSupply, { choices: ["1 phase", "3 phase"] })}
               ${field("Software version", softwareVersion)}
               ${field("Operating hours", record.operatingHours)}
@@ -363,7 +356,8 @@ export async function generateEngineerReportPdf(
   try {
     const page = await browser.newPage();
     await page.setContent(reportHtml(assetNumber, record, reportNumber), { waitUntil: "load" });
-    return await page.pdf({
+    await page.evaluate("document.fonts.ready.then(() => true)");
+    const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
@@ -373,6 +367,10 @@ export async function generateEngineerReportPdf(
       preferCSSPageSize: true,
       timeout: 8_000,
     });
+    if (!Buffer.from(pdf).includes(Buffer.from("/Font"))) {
+      throw new Error("Chromium generated a PDF without font resources; report text would not be visible.");
+    }
+    return pdf;
   } finally {
     await browser.close();
   }

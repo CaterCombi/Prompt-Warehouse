@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EngineerReportAssetDetails } from './engineerReportAssetDetails';
 import type { EngineerReportChecklistCheck } from './engineerReportChecklistCheck';
 import type { EngineerReportPart } from './engineerReportPart';
 
@@ -24,6 +25,7 @@ export interface EngineerReportServiceRecord {
   model: string | null;
   /** @nullable */
   fuelType: string | null;
+  assetDetails: EngineerReportAssetDetails;
   parts: EngineerReportPart[];
   checks: EngineerReportChecklistCheck[];
   warnings: string[];

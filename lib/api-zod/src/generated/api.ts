@@ -494,6 +494,12 @@ export const GetEngineerReportAssetRecordsResponse = zod.object({
   "make": zod.string().nullable(),
   "model": zod.string().nullable(),
   "fuelType": zod.string().nullable(),
+  "assetDetails": zod.object({
+  "manufacturer": zod.string().nullable(),
+  "model": zod.string().nullable(),
+  "powerSource": zod.string().nullable(),
+  "size": zod.string().nullable()
+}),
   "parts": zod.array(zod.object({
   "description": zod.string(),
   "partNumber": zod.string().nullable(),

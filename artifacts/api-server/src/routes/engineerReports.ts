@@ -91,7 +91,7 @@ router.post("/generate", async (req, res) => {
       "Failed to generate Engineer's Report",
     );
     res.status(502).json({
-      message: "The report PDF could not be generated. No file was created or uploaded to SharePoint. Try again, and contact a manager if the problem continues.",
+      message: "The report PDF could not be generated. Nothing was saved. Try again, and contact a manager if the problem continues.",
     });
   }
 });

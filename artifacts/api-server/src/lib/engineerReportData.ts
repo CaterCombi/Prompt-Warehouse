@@ -3,7 +3,7 @@ import type {
   EngineerReportPart,
   EngineerReportServiceRecord,
 } from "@workspace/api-zod";
-import { getSharePointGraphJson, getSharePointSiteId } from "./sharepoint.js";
+import { getAssets, getSharePointGraphJson, getSharePointSiteId } from "./sharepoint.js";
 import {
   buildChecks,
   checklistConfig,
@@ -12,6 +12,12 @@ import {
   type PartPrice,
   type PartPriceIndex,
 } from "./engineerReportMappings.js";
+import {
+  findEngineerReportAssetSource,
+  reconcileEngineerReportValue,
+  toEngineerReportAssetDetails,
+  type AssetRegisterSource,
+} from "./engineerReportAssetDetails.js";
 
 const WORKBOOK_NAME = "Parts used on Refurbished Ovens.xlsx";
 const FORM_SHEET_NAME = "Form1";
@@ -269,8 +275,20 @@ export async function getEngineerReportAssetRecords(
   const makeColumn = findOptionalColumn(context.form.headers, ["Make"]);
   const modelColumn = findOptionalColumn(context.form.headers, ["Model"]);
   const fuelColumn = findOptionalColumn(context.form.headers, ["Fuel type", "Fuel"]);
-  const startColumn = Math.min(assetColumn, serialColumn, dateColumn, engineerColumn, hoursColumn, ...partColumns);
-  const endColumn = Math.max(assetColumn, serialColumn, dateColumn, engineerColumn, hoursColumn, ...partColumns);
+  const optionalDetailColumns = [makeColumn, modelColumn, fuelColumn].filter(
+    (index): index is number => index !== null,
+  );
+  const sourceColumns = [
+    assetColumn,
+    serialColumn,
+    dateColumn,
+    engineerColumn,
+    hoursColumn,
+    ...partColumns,
+    ...optionalDetailColumns,
+  ];
+  const startColumn = Math.min(...sourceColumns);
+  const endColumn = Math.max(...sourceColumns);
   if (startColumn < PRIVATE_METADATA_START_COLUMN) {
     throw new Error("The service data range unexpectedly overlaps private submission metadata.");
   }
@@ -290,8 +308,9 @@ export async function getEngineerReportAssetRecords(
     return { assetNumber: assetNumber.trim(), records: [] };
   }
 
-  const [priceIndex, records] = await Promise.all([
+  const [priceIndex, assetRegisterRecords, records] = await Promise.all([
     getPartPrices(context),
+    getAssets(assetNumber),
     Promise.all(
       matchingRowNumbers.map(async (rowNumber) => {
         const rows = await getSheetRange(
@@ -305,17 +324,40 @@ export async function getEngineerReportAssetRecords(
     ),
   ]);
 
+  const exactAssetRegisterRecord = findEngineerReportAssetSource(
+    assetRegisterRecords,
+    assetNumber,
+  );
+  const assetDetails = toEngineerReportAssetDetails(exactAssetRegisterRecord);
+
   const serviceRecords = records.map(({ rowNumber, row }): EngineerReportServiceRecord => {
     const parts = mapParts(partColumns.map((column) => row[column - startColumn]), priceIndex);
     const serviceDate = valueAsIsoDate(row[dateColumn - startColumn]);
     const engineer = optionalText(row, engineerColumn, startColumn);
     const serialNumber = optionalText(row, serialColumn, startColumn);
     const operatingHours = optionalText(row, hoursColumn, startColumn);
-    const make = optionalText(row, makeColumn, startColumn);
-    const model = optionalText(row, modelColumn, startColumn);
-    const fuelType = optionalText(row, fuelColumn, startColumn);
+    const serviceMake = optionalText(row, makeColumn, startColumn);
+    const serviceModel = optionalText(row, modelColumn, startColumn);
+    const serviceFuelType = optionalText(row, fuelColumn, startColumn);
 
     const warnings: string[] = [];
+    if (!exactAssetRegisterRecord) {
+      warnings.push(
+        `No exact asset-register record was found for asset ${assetNumber}; manufacturer, model, power source and size could not be verified.`,
+      );
+    }
+    const make = reconcileEngineerReportValue("Make", serviceMake, assetDetails.manufacturer, warnings);
+    const model = reconcileEngineerReportValue("Model", serviceModel, assetDetails.model, warnings);
+    const fuelType = reconcileEngineerReportValue("Power source", serviceFuelType, assetDetails.powerSource, warnings);
+    if (exactAssetRegisterRecord && !assetDetails.manufacturer && serviceMake) {
+      warnings.push("Asset register does not record a manufacturer; the selected refurbishment entry is the only source.");
+    }
+    if (exactAssetRegisterRecord && !assetDetails.model && serviceModel) {
+      warnings.push("Asset register does not record a model; the selected refurbishment entry is the only source.");
+    }
+    if (exactAssetRegisterRecord && !assetDetails.powerSource && serviceFuelType) {
+      warnings.push("Asset register does not record a power source; the selected refurbishment entry is the only source.");
+    }
     if (!serviceDate) warnings.push("Service date not recorded.");
     if (!engineer) warnings.push("Engineer not recorded.");
     if (!serialNumber) warnings.push("Serial number not recorded.");
@@ -323,7 +365,11 @@ export async function getEngineerReportAssetRecords(
     if (!make && !model) warnings.push("Make/model not recorded.");
     else if (!make) warnings.push("Make not recorded.");
     else if (!model) warnings.push("Model not recorded.");
-    if (!fuelType) warnings.push("Fuel type not recorded; gas-only checks 27–28 need confirmation.");
+    if (!fuelType) warnings.push("Power source not recorded; gas-only checks 27–28 need confirmation.");
+    else if (!/^(electric|electricity|gas|ng|lpg|natural gas|propane|butane)$/i.test(fuelType)) {
+      warnings.push(`Power source "${fuelType}" is recorded but not recognized; confirm gas-only checks 27–28.`);
+    }
+    if (!assetDetails.size) warnings.push("Size is not recorded in the asset register.");
     for (const part of parts.filter((item) => !item.matched)) {
       warnings.push(`Unmatched part: ${part.description}${part.partNumber ? ` (${part.partNumber})` : ""}`);
     }
@@ -337,6 +383,7 @@ export async function getEngineerReportAssetRecords(
       make,
       model,
       fuelType,
+      assetDetails,
       parts,
       checks: buildChecks(parts, fuelType),
       warnings,
