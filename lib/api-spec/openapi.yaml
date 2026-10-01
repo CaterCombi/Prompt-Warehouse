@@ -508,11 +508,11 @@ components:
           type: number
         paidSessions:
           type: number
-        qualifiedLeads:
+        newContacts:
           type: number
         spend:
           type: number
-      required: [date, organicSessions, paidSessions, qualifiedLeads, spend]
+      required: [date, organicSessions, paidSessions]
     ChannelMix:
       type: object
       properties:
@@ -528,7 +528,7 @@ components:
           type: number
         color:
           type: string
-      required: [channel, sessions, leads, conversionRate, costPerLead, color]
+      required: [channel, sessions, color]
     SeoKeyword:
       type: object
       properties:

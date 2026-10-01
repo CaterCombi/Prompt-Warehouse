@@ -11,6 +11,7 @@ import {
   UpdateMarketingRecommendationResponse,
 } from "@workspace/api-zod";
 import { fetchHubSpotSnapshot } from "../integrations/hubspot";
+import { buildAcquisitionTrend, buildLiveChannelMix } from "../lib/marketingOverviewMetrics";
 import {
   fetchGoogleMarketingSnapshot,
   marketingDateRangeForMonth,
@@ -94,14 +95,14 @@ const referenceRecommendations = [
 ];
 
 const trend = [
-  { date: "04 Aug", organicSessions: 3100, paidSessions: 1840, qualifiedLeads: 38, spend: 1180 },
-  { date: "08 Aug", organicSessions: 3260, paidSessions: 1910, qualifiedLeads: 41, spend: 1230 },
-  { date: "12 Aug", organicSessions: 3400, paidSessions: 2050, qualifiedLeads: 45, spend: 1310 },
-  { date: "16 Aug", organicSessions: 3580, paidSessions: 2110, qualifiedLeads: 48, spend: 1350 },
-  { date: "20 Aug", organicSessions: 3740, paidSessions: 2180, qualifiedLeads: 52, spend: 1420 },
-  { date: "24 Aug", organicSessions: 3910, paidSessions: 2260, qualifiedLeads: 55, spend: 1460 },
-  { date: "28 Aug", organicSessions: 4070, paidSessions: 2330, qualifiedLeads: 58, spend: 1510 },
-  { date: "01 Sep", organicSessions: 4280, paidSessions: 2410, qualifiedLeads: 62, spend: 1550 },
+  { date: "04 Aug", organicSessions: 3100, paidSessions: 1840, newContacts: 38, spend: 1180 },
+  { date: "08 Aug", organicSessions: 3260, paidSessions: 1910, newContacts: 41, spend: 1230 },
+  { date: "12 Aug", organicSessions: 3400, paidSessions: 2050, newContacts: 45, spend: 1310 },
+  { date: "16 Aug", organicSessions: 3580, paidSessions: 2110, newContacts: 48, spend: 1350 },
+  { date: "20 Aug", organicSessions: 3740, paidSessions: 2180, newContacts: 52, spend: 1420 },
+  { date: "24 Aug", organicSessions: 3910, paidSessions: 2260, newContacts: 55, spend: 1460 },
+  { date: "28 Aug", organicSessions: 4070, paidSessions: 2330, newContacts: 58, spend: 1510 },
+  { date: "01 Sep", organicSessions: 4280, paidSessions: 2410, newContacts: 62, spend: 1550 },
 ];
 
 const overview = {
@@ -418,6 +419,7 @@ router.get("/marketing/overview", async (req, res): Promise<void> => {
   if (googleMarketing?.errors.ga4) req.log.warn({ error: googleMarketing.errors.ga4 }, "GA4 read unavailable");
   if (googleMarketing?.errors.ads) req.log.warn({ error: googleMarketing.errors.ads }, "Google Ads read unavailable");
   if (googleMarketing?.errors.seo) req.log.warn({ error: googleMarketing.errors.seo }, "Search Console read unavailable");
+  if (hubSpotResult.status === "rejected") req.log.warn({ error: String(hubSpotResult.reason).slice(0, 200) }, "HubSpot read unavailable");
   if (googleResult.status === "rejected") req.log.warn({ error: String(googleResult.reason).slice(0, 200) }, "Google marketing read failed");
   if (clarityResult.status === "rejected") req.log.warn({ error: String(clarityResult.reason).slice(0, 200) }, "Microsoft Clarity read unavailable");
 
@@ -544,19 +546,11 @@ router.get("/marketing/overview", async (req, res): Promise<void> => {
       || (["newContacts", "dealsCreated"].includes(kpi.key) && Boolean(hubSpot))
       || (kpi.key === "pipeline" && Boolean(hubSpot) && !monthlyReport),
     );
-    const liveChannels = ga4 && hubSpot
-      ? ga4.channels.map((channel) => {
-          const leads = hubSpot.contactSources.find((item) => item.label.toLowerCase() === channel.label.toLowerCase())?.value ?? 0;
-          return {
-            channel: channel.label,
-            sessions: channel.value,
-            leads,
-            conversionRate: channel.value ? Number(((leads / channel.value) * 100).toFixed(1)) : 0,
-            costPerLead: channel.label === "Paid Search" && ads?.conversionsTotal ? Number((ads.spendTotal / ads.conversionsTotal).toFixed(2)) : 0,
-            color: channel.label === "Paid Search" ? "#e98945" : "#1a8f77",
-          };
-        })
-      : [];
+    const liveChannels = buildLiveChannelMix(
+      ga4?.channels ?? [],
+      hubSpot?.contactSources,
+      ads?.spendByChannel,
+    );
     const liveSourceSnapshot = {
       ...sourceSnapshot,
       kpis: liveSourceKpis,
@@ -599,7 +593,7 @@ router.get("/marketing/overview", async (req, res): Promise<void> => {
         }
         return kpi;
       }).filter((kpi) => !kpi.isSample),
-      trend: [],
+      trend: buildAcquisitionTrend(dateRange, ga4?.dailySessions ?? null, hubSpot?.dailyNewContacts),
       channels: liveChannels,
       sources: overview.sources.map((source) => {
         if (source.name === "hubspot") return hubSpot ? { ...source, status: "connected" as const, lastSynced: "Live via HubSpot" } : { ...source, status: "needs_connection" as const, lastSynced: "No live data — omitted" };

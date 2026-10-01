@@ -9,8 +9,8 @@
 export interface ChannelMix {
   channel: string;
   sessions: number;
-  leads: number;
-  conversionRate: number;
-  costPerLead: number;
+  leads?: number;
+  conversionRate?: number;
+  costPerLead?: number;
   color: string;
 }

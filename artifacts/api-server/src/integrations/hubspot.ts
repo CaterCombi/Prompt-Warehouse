@@ -100,6 +100,15 @@ async function loadHubSpotSnapshot(dateRange: MarketingDateRange) {
      return date >= currentStart && date < currentEnd;
   });
   const contactsForAttribution = currentContactRecords;
+   const dailyNewContacts = [...currentContactRecords.reduce((counts, contact) => {
+     const createdAt = new Date(contact.properties?.createdate ?? contact.createdAt ?? 0);
+     if (Number.isNaN(createdAt.getTime())) return counts;
+     const date = createdAt.toISOString().slice(0, 10);
+     counts.set(date, (counts.get(date) ?? 0) + 1);
+     return counts;
+   }, new Map<string, number>())]
+     .map(([date, count]) => ({ date, count }))
+     .sort((first, second) => first.date.localeCompare(second.date));
 
   const sourceCounts = new Map<string, number>();
   for (const contact of contactsForAttribution) {
@@ -146,6 +155,7 @@ async function loadHubSpotSnapshot(dateRange: MarketingDateRange) {
   return {
     contactsTotal: eligibleContacts.length,
     newContacts: currentContacts,
+    dailyNewContacts,
     contactsChange: change(currentContacts, previousContacts),
     dealsCreated,
     monthlyDeals,

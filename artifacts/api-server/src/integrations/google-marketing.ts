@@ -1,3 +1,5 @@
+import { aggregateGa4ReportRows } from "../lib/marketingOverviewMetrics";
+
 type GoogleAuth = { getAccessToken(): Promise<{ token: string | null }> };
 
 type Ga4Snapshot = {
@@ -5,6 +7,7 @@ type Ga4Snapshot = {
   organicSessions: number;
   conversionsTotal: number;
   channels: Array<{ label: string; value: number; share: number }>;
+  dailySessions: Array<{ date: string; organicSessions: number; paidSessions: number }>;
 };
 
 type AdsCampaign = {
@@ -94,33 +97,15 @@ async function fetchGa4Snapshot(dateRange: MarketingDateRange): Promise<Ga4Snaps
     method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       dateRanges: [{ startDate: dateRange.startDate, endDate: dateRange.endDate }],
-      dimensions: [{ name: "sessionDefaultChannelGroup" }],
+      dimensions: [{ name: "date" }, { name: "sessionDefaultChannelGroup" }],
       metrics: [{ name: "sessions" }, { name: "conversions" }],
-      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
-      limit: "50",
+      orderBys: [{ dimension: { dimensionName: "date" }, desc: false }],
+      limit: "5000",
     }),
   });
   if (!response.ok) throw new Error(`GA4 request failed (${response.status})`);
   const responseData = await response.json() as { rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }> };
-
-  const rows = responseData.rows ?? [];
-  const channels = rows
-    .map((row) => ({
-      label: row.dimensionValues?.[0]?.value ?? "Unassigned",
-      value: safeNumber(row.metricValues?.[0]?.value),
-      conversions: safeNumber(row.metricValues?.[1]?.value),
-    }))
-    .filter((channel) => channel.value > 0);
-  const sessionsTotal = channels.reduce((total, channel) => total + channel.value, 0);
-  const organicSessions = channels.find((channel) => channel.label === "Organic Search")?.value ?? 0;
-  const conversionsTotal = channels.reduce((total, channel) => total + channel.conversions, 0);
-
-  return {
-    sessionsTotal,
-    organicSessions,
-    conversionsTotal,
-    channels: channels.map(({ conversions, ...channel }) => ({ ...channel, share: percentage(channel.value, sessionsTotal) })),
-  };
+  return aggregateGa4ReportRows(responseData.rows ?? []);
 }
 
 function dateString(date: Date) {

@@ -567,15 +567,15 @@ export const GetMarketingOverviewResponse = zod.object({
   "date": zod.string(),
   "organicSessions": zod.number(),
   "paidSessions": zod.number(),
-  "qualifiedLeads": zod.number(),
-  "spend": zod.number()
+  "newContacts": zod.number().optional(),
+  "spend": zod.number().optional()
 })),
   "channels": zod.array(zod.object({
   "channel": zod.string(),
   "sessions": zod.number(),
-  "leads": zod.number(),
-  "conversionRate": zod.number(),
-  "costPerLead": zod.number(),
+  "leads": zod.number().optional(),
+  "conversionRate": zod.number().optional(),
+  "costPerLead": zod.number().optional(),
   "color": zod.string()
 })),
   "seoKeywords": zod.array(zod.object({

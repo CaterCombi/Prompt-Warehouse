@@ -10,6 +10,6 @@ export interface TrendPoint {
   date: string;
   organicSessions: number;
   paidSessions: number;
-  qualifiedLeads: number;
-  spend: number;
+  newContacts?: number;
+  spend?: number;
 }
