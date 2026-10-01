@@ -236,7 +236,7 @@ test("Reserved counts as physical stock but remains unavailable for Shopify publ
   }
 });
 
-test("Refurbishment website gaps group missing and hidden listings by model, size, and fuel", async () => {
+test("Refurbishment website gaps include only RATIONAL and group by model, size, and fuel", async () => {
   const restore = mockShopify([
     product("REF-HIDDEN", "hidden-refurb", false),
     product("REF-VISIBLE", "visible-refurb", true),
@@ -255,6 +255,7 @@ test("Refurbishment website gaps group missing and hidden listings by model, siz
     asset("stacked-a", "4112", "Refurbishment", "RATIONAL", "CM", "61", "Electric"),
     asset("stacked-b", "4113", "Refurbishment", "RATIONAL", "CM", "61", "Electric"),
     asset("accessory", "REF-ACCESSORY", "Refurbishment", "Catercombi Accessory", "CM", "61", "Electric"),
+    asset("other-brand", "OTHER-BRAND-REF", "Refurbishment", "Convotherm", "Gourmet", "10", "Electric"),
   ];
 
   try {

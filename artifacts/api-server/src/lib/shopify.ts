@@ -543,7 +543,12 @@ export function buildRefurbishmentWebsiteGaps(
   };
   const visibleModelVariants = new Set<string>();
   for (const asset of controlRoomAssets) {
-    if (excludedFromMissingShopify(asset)) continue;
+    if (
+      normalized(asset.manufacturer) !== "rational" ||
+      excludedFromMissingShopify(asset)
+    ) {
+      continue;
+    }
     const product = productsBySku.get(asset.assetNumber.trim().toLowerCase());
     if (product && isShopifyVisible(product)) {
       visibleModelVariants.add(getModelVariant(asset).key);
@@ -553,6 +558,7 @@ export function buildRefurbishmentWebsiteGaps(
   const gaps = new Map<string, RefurbishmentWebsiteGap>();
   for (const asset of controlRoomAssets) {
     if (
+      normalized(asset.manufacturer) !== "rational" ||
       normalized(asset.status) !== "refurbishment" ||
       excludedFromMissingShopify(asset)
     ) {
