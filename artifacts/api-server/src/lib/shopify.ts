@@ -96,14 +96,8 @@ export type LowStockProduct = {
   shopifySize: string;
   amtSize: string;
   fuel: string;
-  availableCount: number;
+  physicalStockCount: number;
   assetNumbers: string[];
-  recommendations: LowStockRecommendation[];
-};
-
-export type LowStockRecommendation = {
-  assetNumber: string;
-  status: string;
 };
 
 export type SyncOverview = {
@@ -113,6 +107,17 @@ export type SyncOverview = {
   publicationName: string;
   summary: SyncSummary;
   rows: SyncRow[];
+  refurbishmentWebsiteGaps: RefurbishmentWebsiteGap[];
+};
+
+export type RefurbishmentWebsiteGap = {
+  key: string;
+  manufacturer: string;
+  model: string;
+  size: string;
+  fuel: string;
+  missingAssetNumbers: string[];
+  hiddenAssetNumbers: string[];
 };
 
 export type SyncActionResult = {
@@ -289,12 +294,6 @@ function isAvailable(asset: Asset) {
   return asset.status.trim().toLowerCase() === "available";
 }
 
-const RECOMMENDATION_STATUSES = new Set(["refurbishment", "refurbished", "on the bay", "cleaning"]);
-
-function isRecommendationStatus(asset: Asset) {
-  return RECOMMENDATION_STATUSES.has(normalized(asset.status));
-}
-
 const RATIONAL_MODELS = ["CM", "CMP", "SCC", "SCC w.cc", "SCC WE"] as const;
 const RATIONAL_SIZES = [
   { shopifySize: "6 x 1/1", amtSize: "61" },
@@ -309,6 +308,19 @@ const CONTROL_ROOM_CATERCOMBI_ACCESSORY_ASSET_NUMBERS = new Set(["X367"]);
 
 function normalized(value: string | null | undefined) {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+const PHYSICAL_STOCK_STATUSES = new Set([
+  "available",
+  "priority",
+  "cleaning",
+  "on the bay",
+  "refurbishment",
+  "reserved",
+]);
+
+function isPhysicalStock(asset: Asset) {
+  return PHYSICAL_STOCK_STATUSES.has(normalized(asset.status));
 }
 
 function isCatercombiAccessory(asset: Asset) {
@@ -370,29 +382,17 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
           normalized(asset.size) === normalized(mapping.amtSize) &&
           normalizedFuel(asset.fuel) === mapping.fuel,
       );
-      const availableAssets = matchingAssets.filter(isAvailable);
-       const recommendations = controlRoomAssets
-         .filter(
-           (asset) =>
-             isRecommendationStatus(asset) &&
-             normalized(asset.manufacturer) === normalized(mapping.brand) &&
-             normalized(asset.model) === normalized(mapping.model) &&
-             normalized(asset.size) === normalized(mapping.amtSize) &&
-             normalizedFuel(asset.fuel) === mapping.fuel,
-         )
-         .map((asset) => ({ assetNumber: asset.assetNumber, status: asset.status.trim() }))
-         .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber, undefined, { numeric: true }));
+      const physicalAssets = matchingAssets.filter(isPhysicalStock);
 
       return {
         key: [mapping.brand, mapping.model, mapping.shopifySize, mapping.fuel].join(":"),
         ...mapping,
-        availableCount: availableAssets.length,
-        assetNumbers: availableAssets.map((asset) => asset.assetNumber).sort(),
+        physicalStockCount: physicalAssets.length,
+        assetNumbers: physicalAssets.map((asset) => asset.assetNumber).sort(),
         amtAssetCount: matchingAssets.length,
-         recommendations,
       };
     })
-    .filter((product) => product.availableCount <= 1 && product.amtAssetCount > 0)
+    .filter((product) => product.physicalStockCount <= 1 && product.amtAssetCount > 0)
     .map(({ amtAssetCount: _amtAssetCount, ...product }) => product)
     .sort(
       (a, b) =>
@@ -509,6 +509,93 @@ function buildRows(assets: Asset[], products: ShopifyProduct[]): SyncRow[] {
   });
 }
 
+export function buildRefurbishmentWebsiteGaps(
+  assets: Asset[],
+  products: ShopifyProduct[],
+): RefurbishmentWebsiteGap[] {
+  const productsBySku = new Map<string, ShopifyProduct>();
+  for (const product of products) {
+    for (const sku of product.skus) {
+      productsBySku.set(sku.toLowerCase(), product);
+    }
+  }
+
+  const controlRoomAssets = getControlRoomAssets(assets);
+  const getModelVariant = (asset: Asset) => {
+    const manufacturer = asset.manufacturer.trim();
+    const model = asset.model.trim();
+    const size = asset.size.trim();
+    const fuel = asset.fuel.trim();
+    const identity = [
+      manufacturer ? normalized(manufacturer) : `unknown-manufacturer-${asset.id}`,
+      model ? normalized(model) : `unknown-model-${asset.id}`,
+      size ? normalized(size) : `unknown-size-${asset.id}`,
+      fuel ? normalized(fuel) : `unknown-fuel-${asset.id}`,
+    ];
+
+    return {
+      key: JSON.stringify(identity),
+      manufacturer: manufacturer || "Manufacturer not recorded",
+      model: model || "Model details incomplete",
+      size: size || "Size not recorded",
+      fuel: fuel || "Fuel not recorded",
+    };
+  };
+  const visibleModelVariants = new Set<string>();
+  for (const asset of controlRoomAssets) {
+    if (excludedFromMissingShopify(asset)) continue;
+    const product = productsBySku.get(asset.assetNumber.trim().toLowerCase());
+    if (product && isShopifyVisible(product)) {
+      visibleModelVariants.add(getModelVariant(asset).key);
+    }
+  }
+
+  const gaps = new Map<string, RefurbishmentWebsiteGap>();
+  for (const asset of controlRoomAssets) {
+    if (
+      normalized(asset.status) !== "refurbishment" ||
+      excludedFromMissingShopify(asset)
+    ) {
+      continue;
+    }
+
+    const modelVariant = getModelVariant(asset);
+    if (visibleModelVariants.has(modelVariant.key)) continue;
+
+    const product = productsBySku.get(asset.assetNumber.trim().toLowerCase());
+    const gap = gaps.get(modelVariant.key) ?? {
+      ...modelVariant,
+      missingAssetNumbers: [],
+      hiddenAssetNumbers: [],
+    };
+
+    if (product) {
+      gap.hiddenAssetNumbers.push(asset.assetNumber);
+    } else {
+      gap.missingAssetNumbers.push(asset.assetNumber);
+    }
+    gaps.set(modelVariant.key, gap);
+  }
+
+  return Array.from(gaps.values())
+    .map((gap) => ({
+      ...gap,
+      missingAssetNumbers: gap.missingAssetNumbers.sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
+      hiddenAssetNumbers: gap.hiddenAssetNumbers.sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        a.manufacturer.localeCompare(b.manufacturer) ||
+        a.model.localeCompare(b.model) ||
+        a.size.localeCompare(b.size, undefined, { numeric: true }) ||
+        a.fuel.localeCompare(b.fuel),
+    );
+}
+
 function summarize(assets: Asset[], products: ShopifyProduct[], rows: SyncRow[]): SyncSummary {
   return {
     amtTotal: assets.length,
@@ -550,7 +637,7 @@ async function loadComparison(assets: Asset[]) {
 }
 
 export async function getSyncOverview(assets: Asset[]): Promise<SyncOverview> {
-  const { context, publication, rows, summary } = await loadComparison(assets);
+  const { context, publication, products, rows, summary } = await loadComparison(assets);
   return {
     checkedAt: new Date().toISOString(),
     shopName: context.shop.name,
@@ -558,6 +645,7 @@ export async function getSyncOverview(assets: Asset[]): Promise<SyncOverview> {
     publicationName: publication.name,
     summary,
     rows,
+    refurbishmentWebsiteGaps: buildRefurbishmentWebsiteGaps(assets, products),
   };
 }
 

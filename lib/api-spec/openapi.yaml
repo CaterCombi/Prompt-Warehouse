@@ -1383,6 +1383,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SyncRow"
+        refurbishmentWebsiteGaps:
+          type: array
+          description: Model variants with Refurbishment assets and no visible Shopify listing for the manufacturer, model, size, and fuel combination.
+          items:
+            $ref: "#/components/schemas/RefurbishmentWebsiteGap"
       required:
         - checkedAt
         - shopName
@@ -1390,6 +1395,37 @@ components:
         - publicationName
         - summary
         - rows
+        - refurbishmentWebsiteGaps
+
+    RefurbishmentWebsiteGap:
+      type: object
+      properties:
+        key:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        size:
+          type: string
+        fuel:
+          type: string
+        missingAssetNumbers:
+          type: array
+          items:
+            type: string
+        hiddenAssetNumbers:
+          type: array
+          items:
+            type: string
+      required:
+        - key
+        - manufacturer
+        - model
+        - size
+        - fuel
+        - missingAssetNumbers
+        - hiddenAssetNumbers
 
     LowStockProduct:
       type: object
@@ -1406,16 +1442,13 @@ components:
           type: string
         fuel:
           type: string
-        availableCount:
+        physicalStockCount:
           type: integer
+          description: Count of matching AMT assets with status Available, Priority, Cleaning, On the Bay, Refurbishment, or Reserved; measures in-building stock, not Shopify availability.
         assetNumbers:
           type: array
           items:
             type: string
-        recommendations:
-          type: array
-          items:
-            $ref: "#/components/schemas/LowStockRecommendation"
       required:
         - key
         - brand
@@ -1423,18 +1456,8 @@ components:
         - shopifySize
         - amtSize
         - fuel
-        - availableCount
+        - physicalStockCount
         - assetNumbers
-        - recommendations
-
-    LowStockRecommendation:
-      type: object
-      properties:
-        assetNumber:
-          type: string
-        status:
-          type: string
-      required: [assetNumber, status]
 
     SyncActionResult:
       type: object
