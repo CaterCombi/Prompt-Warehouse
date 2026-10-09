@@ -38,6 +38,7 @@ type ShopifyProduct = {
   title: string;
   status: string;
   published: boolean;
+  publishedOnOnlineStore: boolean;
   skus: string[];
 };
 
@@ -48,6 +49,7 @@ type ShopifyProductsResponse = {
       title: string;
       status: string;
       publishedOnPublication: boolean;
+      publishedOnOnlineStore: boolean;
       variants: { nodes: Array<{ sku: string | null }> };
     }>;
     pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -94,6 +96,7 @@ export type LowStockProduct = {
   brand: string;
   model: string;
   shopifySize: string;
+  displaySection: "size" | "vents";
   amtSize: string;
   fuel: string;
   physicalStockCount: number;
@@ -248,27 +251,28 @@ function choosePublication(publications: Array<{ id: string; name: string }>) {
   );
 }
 
-async function getProducts(publicationId: string) {
+async function getProducts(publicationId: string, onlineStorePublicationId: string) {
   const products: ShopifyProduct[] = [];
   let cursor: string | null = null;
 
   do {
     const data: ShopifyProductsResponse = await shopifyGraphql<ShopifyProductsResponse>(
       `#graphql
-        query SyncProducts($after: String, $publicationId: ID!) {
+        query SyncProducts($after: String, $publicationId: ID!, $onlineStorePublicationId: ID!) {
           products(first: 250, after: $after) {
             nodes {
               id
               title
               status
               publishedOnPublication(publicationId: $publicationId)
+              publishedOnOnlineStore: publishedOnPublication(publicationId: $onlineStorePublicationId)
               variants(first: 100) { nodes { sku } }
             }
             pageInfo { hasNextPage endCursor }
           }
         }
       `,
-      { after: cursor, publicationId },
+      { after: cursor, publicationId, onlineStorePublicationId },
     );
 
     products.push(
@@ -277,6 +281,7 @@ async function getProducts(publicationId: string) {
         title: product.title,
         status: product.status,
         published: product.publishedOnPublication,
+        publishedOnOnlineStore: product.publishedOnOnlineStore,
         skus: product.variants.nodes
           .map((variant) => variant.sku?.trim())
           .filter((sku): sku is string => Boolean(sku)),
@@ -290,11 +295,26 @@ async function getProducts(publicationId: string) {
   return products;
 }
 
-function isAvailable(asset: Asset) {
-  return asset.status.trim().toLowerCase() === "available";
-}
-
 const RATIONAL_MODELS = ["CM", "CMP", "SCC", "SCC w.cc", "SCC WE"] as const;
+const VENT_AMT_MODEL_VARIANTS = [
+  "AOS Vent",
+  "Combi Duo Vent",
+  "iCombi Ultravent",
+  "iCombi Vent",
+  "SCC UltraVent",
+  "SCC Ultravent Combi Duo",
+  "SCC WE UltraVent",
+  "SCC WE UltraVent Duo",
+  "SCC WE UltraVent Duo Plus",
+  "SCC WE UltraVent Plus",
+  "SCC WE Vent",
+  "SCCWE Ultravent",
+  "Ultra Vent - iCombi",
+  "Ultravent",
+  "Ultravent Plus",
+  "Ultravent Plus Duo",
+  "Vent",
+] as const;
 const RATIONAL_SIZES = [
   { shopifySize: "6 x 1/1", amtSize: "61" },
   { shopifySize: "10 x 1/1", amtSize: "101" },
@@ -310,6 +330,29 @@ function normalized(value: string | null | undefined) {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function isAvailable(asset: Asset) {
+  const status = normalized(asset.status);
+  if (status === "available") return true;
+  if (status !== "reserved") return false;
+
+  const manufacturer = normalized(asset.manufacturer);
+  const model = normalized(asset.model);
+  const isRationalCombiOven =
+    manufacturer === "rational" &&
+    RATIONAL_MODELS.some((candidate) => normalized(candidate) === model);
+  const isVent = VENT_AMT_MODEL_VARIANTS.some(
+    (candidate) => normalized(candidate) === model,
+  );
+
+  return isRationalCombiOven || isVent;
+}
+
+function availableStatusLabel(asset: Asset) {
+  return normalized(asset.status) === "reserved"
+    ? "Reserved in AMT (treated as Available)"
+    : "Available in AMT";
+}
+
 const PHYSICAL_STOCK_STATUSES = new Set([
   "available",
   "priority",
@@ -318,6 +361,7 @@ const PHYSICAL_STOCK_STATUSES = new Set([
   "refurbishment",
   "reserved",
 ]);
+const MAX_LOW_STOCK_ASSETS_PER_VARIANT = 2;
 
 function isPhysicalStock(asset: Asset) {
   return PHYSICAL_STOCK_STATUSES.has(normalized(asset.status));
@@ -332,6 +376,10 @@ function isCatercombiAccessory(asset: Asset) {
 
 function isShopifyVisible(product: ShopifyProduct) {
   return product.published && normalized(product.status) === "active";
+}
+
+function isShopifyWebsiteVisible(product: ShopifyProduct) {
+  return product.publishedOnOnlineStore && normalized(product.status) === "active";
 }
 
 function getControlRoomAssets(assets: Asset[]) {
@@ -364,14 +412,54 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
     brand: string;
     model: string;
     shopifySize: string;
+    displaySection: LowStockProduct["displaySection"];
     amtSize: string;
     fuel: string;
   }> = RATIONAL_MODELS.flatMap((model) =>
     RATIONAL_SIZES.flatMap(({ shopifySize, amtSize }) =>
-      RATIONAL_FUELS.map((fuel) => ({ brand: "RATIONAL", model, shopifySize, amtSize, fuel })),
+      RATIONAL_FUELS.map((fuel) => ({
+        brand: "RATIONAL",
+        model,
+        shopifySize,
+        displaySection: "size",
+        amtSize,
+        fuel,
+      })),
     ),
   );
-  mappings.push({ brand: "RATIONAL", model: "SCC WE", shopifySize: "XS", amtSize: "XS", fuel: "E" });
+  mappings.push({
+    brand: "RATIONAL",
+    model: "SCC WE",
+    shopifySize: "XS",
+    displaySection: "size",
+    amtSize: "XS",
+    fuel: "E",
+  });
+
+  const ventModelByNormalized = new Map(
+    VENT_AMT_MODEL_VARIANTS.map((model) => [normalized(model), model]),
+  );
+  const ventVariantMappings = new Map<string, (typeof mappings)[number]>();
+  for (const asset of controlRoomAssets) {
+    const model = ventModelByNormalized.get(normalized(asset.model));
+    const brand = asset.manufacturer.trim();
+    if (!model || !brand) continue;
+
+    const amtSize = asset.size.trim();
+    const fuel = normalizedFuel(asset.fuel);
+    const key = JSON.stringify([normalized(brand), model, amtSize, fuel]);
+    if (!ventVariantMappings.has(key)) {
+      ventVariantMappings.set(key, {
+        brand,
+        model,
+        shopifySize: "XS",
+        displaySection: "vents",
+        amtSize,
+        fuel,
+      });
+    }
+  }
+  mappings.push(...ventVariantMappings.values());
 
   return mappings
     .map((mapping) => {
@@ -385,19 +473,27 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
       const physicalAssets = matchingAssets.filter(isPhysicalStock);
 
       return {
-        key: [mapping.brand, mapping.model, mapping.shopifySize, mapping.fuel].join(":"),
+        key: [
+          mapping.brand,
+          mapping.model,
+          mapping.shopifySize,
+          mapping.displaySection,
+          mapping.amtSize,
+          mapping.fuel,
+        ].join(":"),
         ...mapping,
         physicalStockCount: physicalAssets.length,
         assetNumbers: physicalAssets.map((asset) => asset.assetNumber).sort(),
         amtAssetCount: matchingAssets.length,
       };
     })
-    .filter((product) => product.physicalStockCount <= 1 && product.amtAssetCount > 0)
+    .filter((product) => product.physicalStockCount <= MAX_LOW_STOCK_ASSETS_PER_VARIANT && product.amtAssetCount > 0)
     .map(({ amtAssetCount: _amtAssetCount, ...product }) => product)
     .sort(
       (a, b) =>
         a.model.localeCompare(b.model) ||
         a.shopifySize.localeCompare(b.shopifySize, undefined, { numeric: true }) ||
+        a.amtSize.localeCompare(b.amtSize, undefined, { numeric: true }) ||
         a.fuel.localeCompare(b.fuel),
     );
 }
@@ -431,7 +527,7 @@ function buildRows(assets: Asset[], products: ShopifyProduct[]): SyncRow[] {
         shopifyProductStatus: null,
         shopifyPublished: null,
         action: "missing_in_shopify",
-        reason: "Available in AMT but no Shopify product uses this asset number as its SKU.",
+        reason: `${availableStatusLabel(asset)} but no Shopify product uses this asset number as its SKU.`,
       });
       continue;
     }
@@ -447,10 +543,11 @@ function buildRows(assets: Asset[], products: ShopifyProduct[]): SyncRow[] {
       : shopifyVisible
         ? "unpublish"
         : "ready";
+    const availabilityLabel = availableStatusLabel(asset);
     const reason = available
       ? shopifyVisible
-        ? "Available in AMT and published on Shopify."
-        : "Available in AMT but not currently published on Shopify."
+        ? `${availabilityLabel} and published on Shopify.`
+        : `${availabilityLabel} but not currently published on Shopify.`
       : shopifyVisible
         ? `AMT status is ${asset.status}; Shopify product should be hidden.`
         : `AMT status is ${asset.status}; Shopify product is already hidden.`;
@@ -550,7 +647,7 @@ export function buildRefurbishmentWebsiteGaps(
       continue;
     }
     const product = productsBySku.get(asset.assetNumber.trim().toLowerCase());
-    if (product && isShopifyVisible(product)) {
+    if (product && isShopifyWebsiteVisible(product)) {
       visibleModelVariants.add(getModelVariant(asset).key);
     }
   }
@@ -631,7 +728,11 @@ async function loadComparison(assets: Asset[]) {
     throw new Error("Shopify has no storefront publication available for syncing.");
   }
 
-  const products = await getProducts(publication.id);
+  const onlineStorePublication =
+    context.publications.nodes.find(
+      (candidate) => candidate.name.trim().toLowerCase() === "online store",
+    ) ?? publication;
+  const products = await getProducts(publication.id, onlineStorePublication.id);
   const rows = buildRows(controlRoomAssets, products);
   return {
     context,
