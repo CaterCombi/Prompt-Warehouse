@@ -49,7 +49,13 @@ async function freshLeads(force = false) {
 function leadsErrorMessage(err: unknown) {
   const message = String(err);
   if (message.includes("/objects/companies/batch/read")) {
-    return "HubSpot denied company record access. Ensure the token used by Railway has crm.objects.companies.read.";
+    const status = message.match(/returned (\d{3})/)?.[1];
+    if (status === "403") {
+      return "HubSpot denied company record access. Ensure the token used by Railway has crm.objects.companies.read.";
+    }
+    if (status === "400") {
+      return "HubSpot rejected the company lookup request (400).";
+    }
   }
   if (message.includes("returned 403")) {
     return "HubSpot denied Leads access. Add the crm.objects.leads.read scope to the API token.";

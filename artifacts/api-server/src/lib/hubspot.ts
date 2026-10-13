@@ -54,9 +54,8 @@ async function leadCompanyNames(leads: HubSpotLeadRaw[]) {
   if (!companyIds.length) return new Map<string, string>();
   const companies = await request<{
     results: Array<{ id: string; properties: Record<string, string | null> }>;
-  }>("POST", "/crm/v3/objects/companies/batch/read", {
+  }>("POST", "/crm/v3/objects/companies/batch/read?properties=name", {
     inputs: companyIds.map((id) => ({ id })),
-    properties: ["name"],
   });
   const namesByCompanyId = new Map(companies.results.map((company) => [company.id, company.properties.name ?? ""]));
   const namesByLeadId = new Map<string, string>();
