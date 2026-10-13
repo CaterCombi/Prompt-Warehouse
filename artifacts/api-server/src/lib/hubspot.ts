@@ -45,6 +45,29 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return response.json() as Promise<T>;
 }
 function props(raw: HubSpotDeal) { return raw.properties ?? {}; }
+async function leadCompanyNames(ids: string[]) {
+  if (!ids.length) return new Map<string, string>();
+  const associations = await request<{
+    results: Array<{ from: { id: string }; to: Array<{ id: string }> }>;
+  }>("POST", "/crm/v3/associations/leads/companies/batch/read", {
+    inputs: ids.map((id) => ({ id })),
+  });
+  const companyIds = [...new Set(associations.results.flatMap((item) => item.to.map((company) => company.id)))];
+  if (!companyIds.length) return new Map<string, string>();
+  const companies = await request<{
+    results: Array<{ id: string; properties: Record<string, string | null> }>;
+  }>("POST", "/crm/v3/objects/companies/batch/read", {
+    inputs: companyIds.map((id) => ({ id })),
+    properties: ["name"],
+  });
+  const namesByCompanyId = new Map(companies.results.map((company) => [company.id, company.properties.name ?? ""]));
+  const namesByLeadId = new Map<string, string>();
+  for (const association of associations.results) {
+    const name = association.to.map((company) => namesByCompanyId.get(company.id)).find((value) => value?.trim());
+    if (name) namesByLeadId.set(association.from.id, name);
+  }
+  return namesByLeadId;
+}
 function associations(tokenValue: string, ids: string[]) {
   const inputs = ids.map((id) => ({ id }));
   return Promise.all([
@@ -93,7 +116,7 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
   do {
     const query = new URLSearchParams({
       limit: "100",
-      properties: "hs_lead_name,hs_lead_label,hs_lead_type,createdate",
+      properties: "hs_lead_name,hs_lead_label,createdate",
     });
     if (after) query.set("after", after);
     const page = await request<{ results: HubSpotLeadRaw[]; paging?: { next?: { after?: string } } }>(
@@ -103,7 +126,8 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     all.push(...(page.results ?? []));
     after = page.paging?.next?.after;
   } while (after);
-  return all.map(normalizeHubSpotLead);
+  const companyNames = await leadCompanyNames(all.map((lead) => lead.id));
+  return all.map((lead) => normalizeHubSpotLead(lead, companyNames.get(lead.id) ?? null));
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {
   const patch: Record<string, string | null> = {};

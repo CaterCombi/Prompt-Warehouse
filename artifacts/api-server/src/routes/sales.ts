@@ -47,9 +47,14 @@ async function freshLeads(force = false) {
   return cachedHubSpotLeads;
 }
 function leadsErrorMessage(err: unknown) {
-  return String(err).includes("returned 403")
-    ? "HubSpot denied Leads access. Add the crm.objects.leads.read scope to the API token."
-    : "HubSpot Lead records are unavailable";
+  const message = String(err);
+  if (message.includes("/associations/leads/companies") || message.includes("/objects/companies/batch/read")) {
+    return "HubSpot denied associated company access. Ensure the token has crm.objects.companies.read.";
+  }
+  if (message.includes("returned 403")) {
+    return "HubSpot denied Leads access. Add the crm.objects.leads.read scope to the API token.";
+  }
+  return "HubSpot Lead records are unavailable";
 }
 router.get("/leads", async (req, res): Promise<void> => {
   try {
