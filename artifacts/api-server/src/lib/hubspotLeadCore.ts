@@ -8,6 +8,7 @@ const leadStatusLabels: Record<string, string> = {
   NEW: "New",
   CONNECTED: "Connected",
   ATTEMPTED: "Attempted",
+  ATTEMPTED_TO_CONTACT: "Attempted",
   ATTEMPTED_TO_CONNECT: "Attempted",
 };
 
@@ -30,9 +31,13 @@ export interface NormalizedHubSpotLead {
 export function normalizeHubSpotLead(
   raw: HubSpotLeadRaw,
   companyName: string | null = null,
+  stageLabels: Record<string, string> = {},
 ): NormalizedHubSpotLead {
   const properties = raw.properties ?? {};
-  const leadStatus = properties.hs_lead_status?.trim().toUpperCase().replace(/[\s-]+/g, "_") || null;
+  const stageId = properties.hs_pipeline_stage?.trim() || null;
+  const statusValue = properties.hs_lead_status?.trim()
+    || (stageId ? stageLabels[stageId] ?? stageId : null);
+  const leadStatus = statusValue?.toUpperCase().replace(/[\s-]+/g, "_") || null;
   return {
     id: raw.id,
     name: properties.hs_lead_name?.trim() || "(Unnamed lead)",

@@ -87,13 +87,32 @@ export async function fetchDealsFromHubSpot(): Promise<NormalizedDeal[]> {
   const names = await associations(token(), all.map((x) => x.id));
   return all.map((x) => normalizeDeal(x, names.contactNames.get(x.id) ?? null, names.companyNames.get(x.id) ?? null)).filter((x): x is NormalizedDeal => x !== null);
 }
+let cachedLeadStageLabels: { labels: Record<string, string>; cachedAt: number } | null = null;
+async function fetchLeadStageLabels(): Promise<Record<string, string>> {
+  if (cachedLeadStageLabels && Date.now() - cachedLeadStageLabels.cachedAt < 5 * 60_000) {
+    return cachedLeadStageLabels.labels;
+  }
+  const response = await request<{
+    results?: Array<{ stages?: Array<{ id: string; label: string }> }>;
+  }>("GET", "/crm/v3/pipelines/leads");
+  const labels = Object.fromEntries(
+    (response.results ?? []).flatMap((pipeline) => pipeline.stages ?? [])
+      .map((stage) => [stage.id, stage.label]),
+  );
+  if (!Object.keys(labels).length) {
+    throw new Error("HubSpot returned no Lead pipeline stage labels");
+  }
+  cachedLeadStageLabels = { labels, cachedAt: Date.now() };
+  return labels;
+}
+
 export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> {
   const all: HubSpotLeadRaw[] = [];
   let after: string | undefined;
   do {
     const query = new URLSearchParams({
       limit: "100",
-      properties: "hs_lead_name,hs_lead_label,hs_lead_status,hs_all_assigned_business_unit_ids,createdate",
+      properties: "hs_lead_name,hs_lead_label,hs_lead_status,hs_pipeline_stage,hs_all_assigned_business_unit_ids,createdate",
     });
     if (after) query.set("after", after);
     const page = await request<{ results: HubSpotLeadRaw[]; paging?: { next?: { after?: string } } }>(
@@ -104,23 +123,26 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     after = page.paging?.next?.after;
   } while (after);
 
+  const stageLabels = await fetchLeadStageLabels();
+  const caterDirectCount = all.filter(isCaterDirectLead).length;
+  const caterCombiLeads = all.filter((lead) => !isCaterDirectLead(lead));
   const statusCounts: Record<string, number> = {};
-  for (const lead of all) {
-    const rawStatus = lead.properties?.hs_lead_status?.trim().toUpperCase() || "(MISSING)";
+  for (const lead of caterCombiLeads) {
+    const stageId = lead.properties?.hs_pipeline_stage?.trim();
+    const rawStatus = lead.properties?.hs_lead_status?.trim()
+      || (stageId ? stageLabels[stageId] ?? stageId : "(MISSING)");
     const status = rawStatus.replace(/[^A-Z0-9 _-]/g, "").slice(0, 40);
     statusCounts[status] = (statusCounts[status] ?? 0) + 1;
   }
-  const caterDirectCount = all.filter(isCaterDirectLead).length;
   logger.info({
     total: all.length,
     caterDirectCount,
-    afterBrandFilter: all.length - caterDirectCount,
+    afterBrandFilter: caterCombiLeads.length,
     statusCounts,
   }, "HubSpot Leads status summary");
 
-  return all
-    .filter((lead) => !isCaterDirectLead(lead))
-    .map((lead) => normalizeHubSpotLead(lead))
+  return caterCombiLeads
+    .map((lead) => normalizeHubSpotLead(lead, null, stageLabels))
     .filter((lead) => lead.stage !== null);
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {

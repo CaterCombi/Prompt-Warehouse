@@ -36,10 +36,25 @@ test("shows only the requested New, Connected, and Attempted lead statuses", () 
   const normalizeStatus = (status) =>
     normalizeHubSpotLead({ id: status, properties: { hs_lead_status: status } }).stage;
 
+  const stageLabels = {
+    new: "New",
+    connected: "Connected",
+    attempted: "Attempted to Contact",
+    qualified: "Qualified",
+    disqualified: "Disqualified",
+  };
+  const normalizePipelineStage = (id) =>
+    normalizeHubSpotLead({ id, properties: { hs_pipeline_stage: id } }, null, stageLabels).stage;
+
   assert.equal(normalizeStatus("CONNECTED"), "Connected");
   assert.equal(normalizeStatus("ATTEMPTED_TO_CONNECT"), "Attempted");
   assert.equal(normalizeStatus("QUALIFIED"), null);
   assert.equal(normalizeStatus("DISQUALIFIED"), null);
+  assert.equal(normalizePipelineStage("new"), "New");
+  assert.equal(normalizePipelineStage("connected"), "Connected");
+  assert.equal(normalizePipelineStage("attempted"), "Attempted");
+  assert.equal(normalizePipelineStage("qualified"), null);
+  assert.equal(normalizePipelineStage("disqualified"), null);
 });
 
 test("excludes a lead assigned to the CaterDirect brand without matching partial IDs", () => {
