@@ -39,6 +39,7 @@ test("shows only the requested New, Connected, and Attempted lead statuses", () 
   const stageLabels = {
     new: "N",
     connected: "C",
+    attempting: "Attempting",
     attempted: "A",
     qualified: "Q",
     disqualified: "D",
@@ -47,11 +48,13 @@ test("shows only the requested New, Connected, and Attempted lead statuses", () 
     normalizeHubSpotLead({ id, properties: { hs_pipeline_stage: id } }, null, stageLabels).stage;
 
   assert.equal(normalizeStatus("CONNECTED"), "Connected");
+  assert.equal(normalizeStatus("ATTEMPTING"), "Attempted");
   assert.equal(normalizeStatus("ATTEMPTED_TO_CONNECT"), "Attempted");
   assert.equal(normalizeStatus("QUALIFIED"), null);
   assert.equal(normalizeStatus("DISQUALIFIED"), null);
   assert.equal(normalizePipelineStage("new"), "New");
   assert.equal(normalizePipelineStage("connected"), "Connected");
+  assert.equal(normalizePipelineStage("attempting"), "Attempted");
   assert.equal(normalizePipelineStage("attempted"), "Attempted");
   assert.equal(normalizePipelineStage("qualified"), null);
   assert.equal(normalizePipelineStage("disqualified"), null);

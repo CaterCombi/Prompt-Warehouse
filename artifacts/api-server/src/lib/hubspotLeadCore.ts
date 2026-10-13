@@ -10,6 +10,7 @@ const leadStatusLabels: Record<string, string> = {
   C: "Connected",
   CONNECTED: "Connected",
   A: "Attempted",
+  ATTEMPTING: "Attempted",
   ATTEMPTED: "Attempted",
   ATTEMPTED_TO_CONTACT: "Attempted",
   ATTEMPTED_TO_CONNECT: "Attempted",
