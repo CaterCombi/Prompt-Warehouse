@@ -1,12 +1,14 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../middlewares/requireAuth";
-import { fetchDealsFromHubSpot, patchDealOnHubSpot, type NormalizedDeal } from "../lib/hubspot";
+import { fetchDealsFromHubSpot, fetchLeadsFromHubSpot, patchDealOnHubSpot, type NormalizedDeal, type NormalizedHubSpotLead } from "../lib/hubspot";
 import { getCache, setCache, getHiddenDealIds, getHiddenDeals, hideDeal, unhideDeal, getOrder, saveOrder } from "../lib/sales-store";
 import { getAssets } from "../lib/sharepoint";
 import { summarizeSalesWorkweek } from "../lib/salesWorkweek";
 
 const router: IRouter = Router();
 router.use(requireAuth);
+let cachedHubSpotLeads: { leads: NormalizedHubSpotLead[]; cachedAt: string } | null = null;
+const leadCacheTtlMs = 60_000;
 function updateBody(input: unknown): { success: true; data: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null } } | { success: false; error: { message: string } } {
   if (!input || typeof input !== "object") return { success: false, error: { message: "Body must be an object" } };
   const value = input as Record<string, unknown>, out: Record<string, unknown> = {};
@@ -36,6 +38,37 @@ async function freshDeals(force = false) {
   await setCache(deals);
   return { deals, cachedAt: new Date().toISOString() };
 }
+async function freshLeads(force = false) {
+  if (!force && cachedHubSpotLeads && Date.now() - Date.parse(cachedHubSpotLeads.cachedAt) < leadCacheTtlMs) {
+    return cachedHubSpotLeads;
+  }
+  const leads = await fetchLeadsFromHubSpot();
+  cachedHubSpotLeads = { leads, cachedAt: new Date().toISOString() };
+  return cachedHubSpotLeads;
+}
+function leadsErrorMessage(err: unknown) {
+  return String(err).includes("returned 403")
+    ? "HubSpot denied Leads access. Add the crm.objects.leads.read scope to the API token."
+    : "HubSpot Lead records are unavailable";
+}
+router.get("/leads", async (req, res): Promise<void> => {
+  try {
+    const data = await freshLeads();
+    res.json(data);
+  } catch (err) {
+    req.log.error({ err: String(err).slice(0, 200) }, "HubSpot Leads fetch failed");
+    res.status(502).json({ error: leadsErrorMessage(err) });
+  }
+});
+router.post("/leads/refresh", async (req, res): Promise<void> => {
+  try {
+    const data = await freshLeads(true);
+    res.json(data);
+  } catch (err) {
+    req.log.error({ err: String(err).slice(0, 200) }, "HubSpot Leads refresh failed");
+    res.status(502).json({ error: leadsErrorMessage(err) });
+  }
+});
 router.get("/deals", async (req, res): Promise<void> => {
   try { const data = await freshDeals(); res.json(response(data.deals, await getHiddenDealIds(), data.cachedAt)); }
   catch (err) { req.log.error({ err: String(err).slice(0, 200) }, "Sales deals fetch failed"); const cached = await getCache(); if (cached) { res.json(response(cached.deals, await getHiddenDealIds(), cached.cachedAt)); return; } res.status(502).json({ error: "HubSpot is unavailable and no cached data exists" }); }

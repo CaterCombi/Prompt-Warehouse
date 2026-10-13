@@ -1,4 +1,7 @@
 import { logger } from "./logger";
+import { normalizeHubSpotLead, type HubSpotLeadRaw, type NormalizedHubSpotLead } from "./hubspotLeadCore";
+export { normalizeHubSpotLead } from "./hubspotLeadCore";
+export type { NormalizedHubSpotLead } from "./hubspotLeadCore";
 
 export const RENTAL_PIPELINE_ID = "338850771";
 export const SALE_PIPELINE_ID = "default";
@@ -19,7 +22,6 @@ export interface NormalizedDeal {
   dealScore: number | null; saleRental: "sale" | "rental" | null;
   invoiceNumber: string | null; createdAt: string | null; closingDate: string | null;
 }
-
 const stageMap: Record<string, NormalizedDeal["stage"]> = {
   [RENTAL_QUOTES_STAGE_ID]: "quotes", [SALES_QUOTES_STAGE_ID]: "quotes",
   [RENTAL_INVOICE_SENT_STAGE_ID]: "invoice_sent", [SALES_INVOICE_SENT_STAGE_ID]: "invoice_sent",
@@ -84,6 +86,24 @@ export async function fetchDealsFromHubSpot(): Promise<NormalizedDeal[]> {
   } while (after);
   const names = await associations(token(), all.map((x) => x.id));
   return all.map((x) => normalizeDeal(x, names.contactNames.get(x.id) ?? null, names.companyNames.get(x.id) ?? null)).filter((x): x is NormalizedDeal => x !== null);
+}
+export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> {
+  const all: HubSpotLeadRaw[] = [];
+  let after: string | undefined;
+  do {
+    const query = new URLSearchParams({
+      limit: "100",
+      properties: "hs_lead_name,hs_lead_label,hs_lead_type,createdate",
+    });
+    if (after) query.set("after", after);
+    const page = await request<{ results: HubSpotLeadRaw[]; paging?: { next?: { after?: string } } }>(
+      "GET",
+      `/crm/v3/objects/leads?${query.toString()}`,
+    );
+    all.push(...(page.results ?? []));
+    after = page.paging?.next?.after;
+  } while (after);
+  return all.map(normalizeHubSpotLead);
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {
   const patch: Record<string, string | null> = {};
