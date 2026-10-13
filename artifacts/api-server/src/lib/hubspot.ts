@@ -104,6 +104,20 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     after = page.paging?.next?.after;
   } while (after);
 
+  const statusCounts: Record<string, number> = {};
+  for (const lead of all) {
+    const rawStatus = lead.properties?.hs_lead_status?.trim().toUpperCase() || "(MISSING)";
+    const status = rawStatus.replace(/[^A-Z0-9 _-]/g, "").slice(0, 40);
+    statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+  }
+  const caterDirectCount = all.filter(isCaterDirectLead).length;
+  logger.info({
+    total: all.length,
+    caterDirectCount,
+    afterBrandFilter: all.length - caterDirectCount,
+    statusCounts,
+  }, "HubSpot Leads status summary");
+
   return all
     .filter((lead) => !isCaterDirectLead(lead))
     .map((lead) => normalizeHubSpotLead(lead))
