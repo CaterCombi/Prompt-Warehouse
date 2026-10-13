@@ -93,7 +93,7 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
   do {
     const query = new URLSearchParams({
       limit: "100",
-      properties: "hs_lead_name,hs_lead_label,hs_pipeline_stage,hs_all_assigned_business_unit_ids,createdate",
+      properties: "hs_lead_name,hs_lead_label,hs_lead_status,hs_all_assigned_business_unit_ids,createdate",
     });
     if (after) query.set("after", after);
     const page = await request<{ results: HubSpotLeadRaw[]; paging?: { next?: { after?: string } } }>(
@@ -104,31 +104,9 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     after = page.paging?.next?.after;
   } while (after);
 
-  const stageLabels = await fetchLeadStageLabels();
   return all
     .filter((lead) => !isCaterDirectLead(lead))
-    .map((lead) => normalizeHubSpotLead(lead, null, stageLabels));
-}
-
-let cachedLeadStageLabels: { labels: Record<string, string>; cachedAt: number } | null = null;
-async function fetchLeadStageLabels(): Promise<Record<string, string>> {
-  if (cachedLeadStageLabels && Date.now() - cachedLeadStageLabels.cachedAt < 5 * 60_000) {
-    return cachedLeadStageLabels.labels;
-  }
-  try {
-    const response = await request<{ results?: Array<{ stages?: Array<{ id: string; label: string }> }> }>(
-      "GET",
-      "/crm/v3/pipelines/leads",
-    );
-    const labels = Object.fromEntries(
-      (response.results ?? []).flatMap((pipeline) => pipeline.stages ?? []).map((stage) => [stage.id, stage.label]),
-    );
-    cachedLeadStageLabels = { labels, cachedAt: Date.now() };
-    return labels;
-  } catch {
-    // A pipeline metadata failure should not hide leads; the raw stage ID remains available.
-    return {};
-  }
+    .map((lead) => normalizeHubSpotLead(lead));
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {
   const patch: Record<string, string | null> = {};

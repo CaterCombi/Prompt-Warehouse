@@ -4,6 +4,12 @@ export interface HubSpotLeadRaw {
 }
 
 export const CATERDIRECT_BUSINESS_UNIT_ID = "17577089";
+const leadStatusLabels: Record<string, string> = {
+  NEW: "New",
+  CONNECTED: "Connected",
+  ATTEMPTED: "Attempted",
+  ATTEMPTED_TO_CONNECT: "Attempted",
+};
 
 export function isCaterDirectLead(raw: HubSpotLeadRaw): boolean {
   return (raw.properties?.hs_all_assigned_business_unit_ids ?? "")
@@ -24,15 +30,14 @@ export interface NormalizedHubSpotLead {
 export function normalizeHubSpotLead(
   raw: HubSpotLeadRaw,
   companyName: string | null = null,
-  stageLabels: Record<string, string> = {},
 ): NormalizedHubSpotLead {
   const properties = raw.properties ?? {};
-  const stageId = properties.hs_pipeline_stage?.trim() || null;
+  const leadStatus = properties.hs_lead_status?.trim().toUpperCase().replace(/[\s-]+/g, "_") || null;
   return {
     id: raw.id,
     name: properties.hs_lead_name?.trim() || "(Unnamed lead)",
     label: properties.hs_lead_label?.trim() || null,
-    stage: stageId ? stageLabels[stageId] ?? stageId : null,
+    stage: leadStatus ? leadStatusLabels[leadStatus] ?? null : null,
     companyName,
     createdAt: properties.createdate ?? null,
   };

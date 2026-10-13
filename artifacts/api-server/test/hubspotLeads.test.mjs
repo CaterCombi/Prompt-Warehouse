@@ -2,20 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isCaterDirectLead, normalizeHubSpotLead } from "../src/lib/hubspotLeadCore.ts";
 
-test("normalizes HubSpot Lead name, label, stage, company, and creation date", () => {
+test("normalizes HubSpot Lead name, label, lead status, company, and creation date", () => {
   assert.deepEqual(normalizeHubSpotLead({
     id: "lead-123",
     properties: {
       hs_lead_name: "  Jane Doe  ",
       hs_lead_label: "HOT",
-      hs_pipeline_stage: "connected",
+      hs_lead_status: "NEW",
       createdate: "2026-10-13T10:00:00.000Z",
     },
-  }, "Example Catering Ltd", { connected: "Connected" }), {
+  }, "Example Catering Ltd"), {
     id: "lead-123",
     name: "Jane Doe",
     label: "HOT",
-    stage: "Connected",
+    stage: "New",
     companyName: "Example Catering Ltd",
     createdAt: "2026-10-13T10:00:00.000Z",
   });
@@ -30,6 +30,16 @@ test("keeps HubSpot Leads with missing display values usable", () => {
     companyName: null,
     createdAt: null,
   });
+});
+
+test("shows only the requested New, Connected, and Attempted lead statuses", () => {
+  const normalizeStatus = (status) =>
+    normalizeHubSpotLead({ id: status, properties: { hs_lead_status: status } }).stage;
+
+  assert.equal(normalizeStatus("CONNECTED"), "Connected");
+  assert.equal(normalizeStatus("ATTEMPTED_TO_CONNECT"), "Attempted");
+  assert.equal(normalizeStatus("QUALIFIED"), null);
+  assert.equal(normalizeStatus("DISQUALIFIED"), null);
 });
 
 test("excludes a lead assigned to the CaterDirect brand without matching partial IDs", () => {
