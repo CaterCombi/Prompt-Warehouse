@@ -3,6 +3,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { fetchDealsFromHubSpot, patchDealOnHubSpot, type NormalizedDeal } from "../lib/hubspot";
 import { getCache, setCache, getHiddenDealIds, getHiddenDeals, hideDeal, unhideDeal, getOrder, saveOrder } from "../lib/sales-store";
 import { getAssets } from "../lib/sharepoint";
+import { summarizeSalesWorkweek } from "../lib/salesWorkweek";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -68,6 +69,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     res.json({
       activeRentals: relevantAssets.filter((asset) => asset.status.trim().toLowerCase() === "on hire").length,
       totalSales,
+      weeklySales: summarizeSalesWorkweek(relevantAssets),
       availableAssets: relevantAssets.filter((asset) => available.has(asset.status.trim().toLowerCase())).length,
       lastUpdated: new Date().toISOString(),
     });
