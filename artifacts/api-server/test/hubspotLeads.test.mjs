@@ -37,11 +37,11 @@ test("shows only the requested New, Connected, and Attempted lead statuses", () 
     normalizeHubSpotLead({ id: status, properties: { hs_lead_status: status } }).stage;
 
   const stageLabels = {
-    new: "New",
-    connected: "Connected",
-    attempted: "Attempted to Contact",
-    qualified: "Qualified",
-    disqualified: "Disqualified",
+    new: "N",
+    connected: "C",
+    attempted: "A",
+    qualified: "Q",
+    disqualified: "D",
   };
   const normalizePipelineStage = (id) =>
     normalizeHubSpotLead({ id, properties: { hs_pipeline_stage: id } }, null, stageLabels).stage;

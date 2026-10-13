@@ -5,8 +5,11 @@ export interface HubSpotLeadRaw {
 
 export const CATERDIRECT_BUSINESS_UNIT_ID = "17577089";
 const leadStatusLabels: Record<string, string> = {
+  N: "New",
   NEW: "New",
+  C: "Connected",
   CONNECTED: "Connected",
+  A: "Attempted",
   ATTEMPTED: "Attempted",
   ATTEMPTED_TO_CONTACT: "Attempted",
   ATTEMPTED_TO_CONNECT: "Attempted",
