@@ -1,5 +1,5 @@
 import { logger } from "./logger";
-import { normalizeHubSpotLead, type HubSpotLeadRaw, type NormalizedHubSpotLead } from "./hubspotLeadCore";
+import { firstAssociatedCompanyId, normalizeHubSpotLead, type HubSpotLeadRaw, type NormalizedHubSpotLead } from "./hubspotLeadCore";
 export { normalizeHubSpotLead } from "./hubspotLeadCore";
 export type { NormalizedHubSpotLead } from "./hubspotLeadCore";
 
@@ -45,14 +45,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return response.json() as Promise<T>;
 }
 function props(raw: HubSpotDeal) { return raw.properties ?? {}; }
-async function leadCompanyNames(ids: string[]) {
-  if (!ids.length) return new Map<string, string>();
-  const associations = await request<{
-    results: Array<{ from: { id: string }; to: Array<{ id: string }> }>;
-  }>("POST", "/crm/v3/associations/leads/companies/batch/read", {
-    inputs: ids.map((id) => ({ id })),
-  });
-  const companyIds = [...new Set(associations.results.flatMap((item) => item.to.map((company) => company.id)))];
+async function leadCompanyNames(leads: HubSpotLeadRaw[]) {
+  const companyIdsByLead = new Map(leads.flatMap((lead) => {
+    const companyId = firstAssociatedCompanyId(lead);
+    return companyId ? [[lead.id, companyId] as const] : [];
+  }));
+  const companyIds = [...new Set(companyIdsByLead.values())];
   if (!companyIds.length) return new Map<string, string>();
   const companies = await request<{
     results: Array<{ id: string; properties: Record<string, string | null> }>;
@@ -62,9 +60,9 @@ async function leadCompanyNames(ids: string[]) {
   });
   const namesByCompanyId = new Map(companies.results.map((company) => [company.id, company.properties.name ?? ""]));
   const namesByLeadId = new Map<string, string>();
-  for (const association of associations.results) {
-    const name = association.to.map((company) => namesByCompanyId.get(company.id)).find((value) => value?.trim());
-    if (name) namesByLeadId.set(association.from.id, name);
+  for (const [leadId, companyId] of companyIdsByLead) {
+    const name = namesByCompanyId.get(companyId);
+    if (name?.trim()) namesByLeadId.set(leadId, name);
   }
   return namesByLeadId;
 }
@@ -117,6 +115,7 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     const query = new URLSearchParams({
       limit: "100",
       properties: "hs_lead_name,hs_lead_label,createdate",
+      associations: "companies",
     });
     if (after) query.set("after", after);
     const page = await request<{ results: HubSpotLeadRaw[]; paging?: { next?: { after?: string } } }>(
@@ -126,7 +125,7 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
     all.push(...(page.results ?? []));
     after = page.paging?.next?.after;
   } while (after);
-  const companyNames = await leadCompanyNames(all.map((lead) => lead.id));
+  const companyNames = await leadCompanyNames(all);
   return all.map((lead) => normalizeHubSpotLead(lead, companyNames.get(lead.id) ?? null));
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {
