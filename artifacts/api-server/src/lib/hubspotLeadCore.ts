@@ -1,11 +1,6 @@
 export interface HubSpotLeadRaw {
   id: string;
   properties?: Record<string, string | null | undefined>;
-  associations?: {
-    companies?: {
-      results?: Array<{ id: string }>;
-    };
-  };
 }
 
 export interface NormalizedHubSpotLead {
@@ -14,10 +9,6 @@ export interface NormalizedHubSpotLead {
   label: string | null;
   companyName: string | null;
   createdAt: string | null;
-}
-
-export function firstAssociatedCompanyId(raw: HubSpotLeadRaw): string | null {
-  return raw.associations?.companies?.results?.[0]?.id ?? null;
 }
 
 export function normalizeHubSpotLead(raw: HubSpotLeadRaw, companyName: string | null = null): NormalizedHubSpotLead {

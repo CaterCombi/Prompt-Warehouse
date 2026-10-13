@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { firstAssociatedCompanyId, normalizeHubSpotLead } from "../src/lib/hubspotLeadCore.ts";
+import { normalizeHubSpotLead } from "../src/lib/hubspotLeadCore.ts";
 
 test("normalizes HubSpot Lead name, label, company, and creation date", () => {
   assert.deepEqual(normalizeHubSpotLead({
@@ -29,10 +29,3 @@ test("keeps HubSpot Leads with missing display values usable", () => {
   });
 });
 
-test("reads the first associated company ID from a HubSpot Lead", () => {
-  assert.equal(firstAssociatedCompanyId({
-    id: "lead-789",
-    associations: { companies: { results: [{ id: "company-1" }, { id: "company-2" }] } },
-  }), "company-1");
-  assert.equal(firstAssociatedCompanyId({ id: "lead-000" }), null);
-});
