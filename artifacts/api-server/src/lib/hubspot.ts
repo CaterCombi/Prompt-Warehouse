@@ -106,7 +106,8 @@ export async function fetchLeadsFromHubSpot(): Promise<NormalizedHubSpotLead[]> 
 
   return all
     .filter((lead) => !isCaterDirectLead(lead))
-    .map((lead) => normalizeHubSpotLead(lead));
+    .map((lead) => normalizeHubSpotLead(lead))
+    .filter((lead) => lead.stage !== null);
 }
 export async function patchDealOnHubSpot(dealId: string, fields: { asset?: string | null; saleRental?: "sale" | "rental" | null; invoiceNumber?: string | null; closingDate?: string | null }): Promise<NormalizedDeal> {
   const patch: Record<string, string | null> = {};
