@@ -242,7 +242,7 @@ async function downloadCsvFile(client: Client, filename: string, directory: stri
 export async function ingestFtps() {
   const host = process.env.FTP_HOST, user = process.env.FTP_USER, password = process.env.FTP_PASSWORD;
   if (!host || !user || !password) return { filesFound: 0, filesProcessed: 0, error: "FTP credentials not configured (FTP_HOST, FTP_USER, FTP_PASSWORD required)" };
-  const ftpDirectory = process.env.SERVICE_DESK_FTP_DIRECTORY?.trim() || "/home/fvaxwducz9bb/joblogic-reports";
+  const ftpDirectory = process.env.SERVICE_DESK_FTP_DIRECTORY?.trim() || "/";
   const client = new Client(); let filesProcessed = 0; let error: string | null = null;
   try {
     const plaintext = process.env.FTP_ALLOW_PLAINTEXT === "true";
