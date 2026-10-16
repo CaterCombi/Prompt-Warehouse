@@ -31,13 +31,15 @@ function soldCalendarDate(value: unknown) {
 }
 
 export function summarizeSalesWorkweek(
-  assets: Array<{ status?: unknown; dateSold?: unknown }>,
+  assets: Array<{ manufacturer?: unknown; dateSold?: unknown }>,
   now = new Date(),
 ) {
   const localToday = calendarDateInTimeZone(now);
   const [year, month, day] = localToday.split("-").map(Number);
   const monday = new Date(Date.UTC(year, month - 1, day));
-  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  const dayOfWeek = monday.getUTCDay();
+  monday.setUTCDate(monday.getUTCDate() - ((dayOfWeek + 6) % 7));
+  if (dayOfWeek === 0) monday.setUTCDate(monday.getUTCDate() + 7);
 
   const days = weekdays.map((weekday, index) => {
     const date = new Date(monday);
@@ -47,8 +49,7 @@ export function summarizeSalesWorkweek(
   const countsByDate = new Map(days.map((item) => [item.date, item]));
 
   for (const asset of assets) {
-    const status = String(asset.status ?? "").trim().toLowerCase();
-    if (status !== "sold" && status !== "booked") continue;
+    if (String(asset.manufacturer ?? "").trim().toLowerCase() === "catercombi accessory") continue;
     const date = soldCalendarDate(asset.dateSold);
     const day = date ? countsByDate.get(date) : undefined;
     if (day) day.count += 1;
