@@ -46,7 +46,7 @@ export const date = (s: string | null) => { if (!s) return null; const m = s.mat
 export const completedJobIdentity = (ref: string, completed: Date) =>
   `joblogic:completed:${ref.trim().toLowerCase()}:${completed.toISOString()}`;
 const rows = (content: Buffer) => parse(content, { columns: (h: string[]) => h.map(x => x.toLowerCase().replace(/[\s-]+/g, "_").trim()), skip_empty_lines: true, relax_column_count: true, trim: true, bom: true }) as Record<string, string>[];
-const kind = (r: Record<string, string>) => { const h = Object.keys(r); if (h.includes("asset_autoinc") && h.includes("site_id") && h.includes("service_type")) return "rental_assets"; if (h.some(x => x.includes("visit_startdate") || x.includes("appointment_date"))) return "outstanding"; if (h.some(x => x.includes("job_type") || x.includes("completion"))) return "jobs"; if (h.includes("asset_id") && h.some(x => x.includes("postcode"))) return "asset_addresses"; if (h.some(x => ["asset_id", "asset_ref", "asset_reference"].includes(x))) return "assets"; return "unknown"; };
+const kind = (r: Record<string, string>) => { const h = Object.keys(r); if (h.includes("asset_autoinc") && h.includes("site_id") && h.includes("service_type")) return "rental_assets"; if (h.some(x => x.includes("visit_startdate") || x.includes("visit_start") || x.includes("appointment_date"))) return "outstanding"; if (h.some(x => x.includes("job_type") || x.includes("completion"))) return "jobs"; if (h.includes("asset_id") && h.some(x => x.includes("postcode"))) return "asset_addresses"; if (h.some(x => ["asset_id", "asset_ref", "asset_reference"].includes(x))) return "assets"; return "unknown"; };
 const jobRefKey = (ref: string) => ref.trim().toLowerCase().replace(/\s+/g, " ");
 export function buildJobTypeLookup(content: Buffer): Map<string, string> {
   const lookup = new Map<string, string>();
@@ -85,13 +85,13 @@ export async function importOutstandingCsv(
     ? Object.keys(input[0]!)
     : ((parse(content, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? [])
       .map(header => header.toLowerCase().replace(/[\s-]+/g, "_").trim());
-  if (!headers.some(h => ["appointment_date", "visit_startdate", "appointment", "planned_date"].includes(h)) ||
+  if (!headers.some(h => ["appointment_date", "visit_startdate", "visit_start", "appointment", "planned_date"].includes(h)) ||
       !headers.some(h => ["id", "job_number", "job_ref", "job_id", "reference"].includes(h))) {
     throw new Error("The schedule CSV needs a job ID and appointment or visit start date.");
   }
   const scheduledJobs = input.flatMap(r => {
     const ref = val(r, ["id", "job_number", "job_ref", "job_id", "reference"]);
-    const scheduled = ukVisitDate(val(r, ["visit_startdate", "appointment_date", "appointment", "planned_date"]));
+    const scheduled = ukVisitDate(val(r, ["visit_startdate", "visit_start", "appointment_date", "appointment", "planned_date"]));
     const completed = date(val(r, ["completeddate", "completion_date", "completed_date", "date_completed"]));
     const visitStatus = val(r, ["visit_status"])?.toLowerCase();
     const jobStatus = val(r, ["job_status", "status"])?.toLowerCase();
@@ -185,7 +185,7 @@ async function importCsv(content: Buffer, filename: string, type: string, jobTyp
     let imported = 0;
   for (const r of input) {
     const ref = val(r, ["id", "job_number", "job_ref", "job_id", "reference"]); const asset = val(r, ["job_reference", "asset_ref", "job_reference_number", "equipment", "asset_number"]) ?? (val(r, ["job_description", "description"])?.match(/^(\d+)\s*[-–]/)?.[1] ?? null);
-    const scheduled = date(val(r, ["visit_startdate", "appointment_date", "appointment", "planned_date"])); const completed = date(val(r, ["completeddate", "completion_date", "completed_date", "date_completed", "date"]));
+    const scheduled = date(val(r, ["visit_startdate", "visit_start", "appointment_date", "appointment", "planned_date"])); const completed = date(val(r, ["completeddate", "completion_date", "completed_date", "date_completed", "date"]));
     if (type === "jobs" && !completed || type === "outstanding" && !scheduled) continue;
     if (type === "jobs" || type === "outstanding") {
       // JobLogic job reference is stable across exports. Filename is metadata,
@@ -232,16 +232,17 @@ async function importCsv(content: Buffer, filename: string, type: string, jobTyp
   return run(db);
 }
 
-async function downloadCsvFile(client: Client, filename: string): Promise<Buffer> {
+async function downloadCsvFile(client: Client, filename: string, directory: string): Promise<Buffer> {
   const chunks: Buffer[] = [];
   const stream = new Writable({ write(chunk, _enc, cb) { chunks.push(Buffer.from(chunk)); cb(); } });
-  await client.downloadTo(stream, filename);
+  await client.downloadTo(stream, `${directory.replace(/\/+$/, "")}/${filename}`);
   return Buffer.concat(chunks);
 }
 
 export async function ingestFtps() {
   const host = process.env.FTP_HOST, user = process.env.FTP_USER, password = process.env.FTP_PASSWORD;
   if (!host || !user || !password) return { filesFound: 0, filesProcessed: 0, error: "FTP credentials not configured (FTP_HOST, FTP_USER, FTP_PASSWORD required)" };
+  const ftpDirectory = process.env.SERVICE_DESK_FTP_DIRECTORY?.trim() || "/home/fvaxwducz9bb/joblogic-reports";
   const client = new Client(); let filesProcessed = 0; let error: string | null = null;
   try {
     const plaintext = process.env.FTP_ALLOW_PLAINTEXT === "true";
@@ -250,11 +251,12 @@ export async function ingestFtps() {
       host, port: Number(process.env.FTP_PORT ?? 21), user, password,
       secure: !plaintext, ...(plaintext ? {} : { secureOptions: { rejectUnauthorized: true } }),
     });
-    const files = (await client.list("/")).filter(f => f.type === 1 && f.name.toLowerCase().endsWith(".csv"));
+    const files = (await client.list(ftpDirectory)).filter(f => f.type === 1 && f.name.toLowerCase().endsWith(".csv"));
     // JobLogic generates a new filename for each daily full snapshot. Import only
     // the newest of each report, not weeks of superseded copies on first sync.
     const reportFamily = (name: string) => {
-      const lower = name.toLowerCase();
+      const lower = name.toLowerCase().replace(/[_\s]+/g, " ").trim();
+      if (lower.startsWith("engineer visits past 14 days + future visits")) return "outstanding jobs by engineer";
       return ["outstanding jobs by engineer", "outstanding jobs logged today or before", "all jobs", "all sites", "all assets"]
         .find(prefix => lower.startsWith(prefix)) ?? null;
     };
@@ -271,7 +273,7 @@ export async function ingestFtps() {
     const readCsvFile = async (filename: string) => {
       const cached = contents.get(filename);
       if (cached) return cached;
-      const content = await downloadCsvFile(client, filename);
+      const content = await downloadCsvFile(client, filename, ftpDirectory);
       contents.set(filename, content);
       return content;
     };
@@ -312,7 +314,7 @@ export async function ingestFtps() {
       if (family === "outstanding jobs logged today or before" && latestEngineer) continue;
       const refreshThisEngineerSchedule = file.name === latestEngineer && refreshEngineerSchedule;
       if (await isProcessed(file.name) && !refreshThisEngineerSchedule) continue;
-       const content = await readCsvFile(file.name); const parsed = rows(content); const first = parsed[0] ?? Object.fromEntries(((parse(content, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? []).map(header => [header.toLowerCase().replace(/[\s-]+/g, "_").trim(), ""])); const detectedType = kind(first); const isOutstandingReport = file.name.toLowerCase().startsWith("outstanding jobs by engineer") || file.name.toLowerCase().startsWith("outstanding jobs logged today or before"); const type = detectedType === "unknown" && isOutstandingReport ? "outstanding" : detectedType; if (type === "unknown") { logger.warn({ filename: file.name }, "Skipping unknown FTPS CSV type"); continue; } const imported = await importCsv(content, file.name, type, refreshThisEngineerSchedule ? jobTypesByRef : undefined);
+       const content = await readCsvFile(file.name); const parsed = rows(content); const first = parsed[0] ?? Object.fromEntries(((parse(content, { to_line: 1, bom: true, trim: true }) as string[][])[0] ?? []).map(header => [header.toLowerCase().replace(/[\s-]+/g, "_").trim(), ""])); const detectedType = kind(first); const normalizedName = file.name.toLowerCase().replace(/[_\s]+/g, " ").trim(); const isOutstandingReport = normalizedName.startsWith("outstanding jobs by engineer") || normalizedName.startsWith("outstanding jobs logged today or before") || normalizedName.startsWith("engineer visits past 14 days + future visits"); const type = detectedType === "unknown" && isOutstandingReport ? "outstanding" : detectedType; if (type === "unknown") { logger.warn({ filename: file.name }, "Skipping unknown FTPS CSV type"); continue; } const imported = await importCsv(content, file.name, type, refreshThisEngineerSchedule ? jobTypesByRef : undefined);
       await db.insert(serviceDeskProcessedFiles).values({ filename: file.name }).onConflictDoNothing(); filesProcessed++; logger.info({ filename: file.name, imported }, "FTPS file imported");
     }
     // Enrich imported postcodes through the public bulk geocoder when source
