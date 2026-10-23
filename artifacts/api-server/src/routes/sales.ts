@@ -26,6 +26,14 @@ function orderBody(input: unknown): { success: true; data: { salesQuotes: string
   if (Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !Array.isArray(value[key]) || (value[key] as unknown[]).some((x) => typeof x !== "string"))) return { success: false, error: { message: "Order must contain four string arrays" } };
   return { success: true, data: value as { salesQuotes: string[]; salesInvoice: string[]; salesDeposit: string[]; rentalDeals: string[] } };
 }
+function filterOnHireAssets<T extends { status: string; manufacturer: string }>(assets: T[]): T[] {
+  return assets.filter(
+    (asset) =>
+      asset.status.trim().toLowerCase() === "on hire" &&
+      asset.manufacturer.trim().toLowerCase() !== "catercombi accessory",
+  );
+}
+
 function response(deals: NormalizedDeal[], hidden: Set<string>, lastUpdated: string | null) {
   const visible = deals.filter((d) => !hidden.has(d.id));
   const quotes = visible.filter((d) => d.stage === "quotes"), invoiceSent = visible.filter((d) => d.stage === "invoice_sent"), depositPaid = visible.filter((d) => d.stage === "deposit_paid");
@@ -90,6 +98,15 @@ router.post("/deals/:dealId/hide", async (req, res): Promise<void> => { const id
 router.delete("/deals/:dealId/hide", async (req, res): Promise<void> => { const id = Array.isArray(req.params.dealId) ? req.params.dealId[0] : req.params.dealId; await unhideDeal(id); res.sendStatus(204); });
 router.get("/order", async (_req, res): Promise<void> => { res.json(await getOrder()); });
 router.put("/order", async (req, res): Promise<void> => { const parsed = orderBody(req.body); if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; } await saveOrder(parsed.data); res.sendStatus(204); });
+router.get("/rentals", async (req, res): Promise<void> => {
+  try {
+    const assets = await getAssets();
+    res.json(filterOnHireAssets(assets));
+  } catch (err) {
+    req.log.error({ err: String(err).slice(0, 200) }, "AMT on-hire assets fetch failed");
+    res.status(502).json({ error: "AMT on-hire assets are unavailable" });
+  }
+});
 router.get("/summary", async (req, res): Promise<void> => {
   try {
     const assets = await getAssets();
@@ -102,7 +119,7 @@ router.get("/summary", async (req, res): Promise<void> => {
       return Number.isFinite(soldAt) && soldAt >= now - year && soldAt <= now;
     }).length;
     res.json({
-      activeRentals: relevantAssets.filter((asset) => asset.status.trim().toLowerCase() === "on hire").length,
+      activeRentals: filterOnHireAssets(assets).length,
       totalSales,
       weeklySales: summarizeSalesWorkweek(relevantAssets),
       availableAssets: relevantAssets.filter((asset) => available.has(asset.status.trim().toLowerCase())).length,
