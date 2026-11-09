@@ -42,7 +42,7 @@ router.get("/summary", async (req, res) => {
     const month = typeof req.query.month === "string" ? req.query.month : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const start = iso(`${month}-01T00:00:00Z`) ?? new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1);
-    const [open, tickets, jobs, allJobs, last, scheduleImports] = await Promise.all([
+    const [open, tickets, jobs, allJobs, last, scheduleImports, schedulePolls] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(serviceDeskTickets).where(isNull(serviceDeskTickets.closedAt)),
       db.select({ count: sql<number>`count(*)` }).from(serviceDeskTickets).where(and(gte(serviceDeskTickets.createdAt, start), lt(serviceDeskTickets.createdAt, end))),
       db.select({ count: sql<number>`count(distinct ${serviceDeskJobs.jobRef})` }).from(serviceDeskJobs).where(and(gte(serviceDeskJobs.completedAt, start), lt(serviceDeskJobs.completedAt, end))),
@@ -51,6 +51,7 @@ router.get("/summary", async (req, res) => {
       db.select({
         createdAt: serviceDeskIngestionLog.createdAt,
         status: serviceDeskIngestionLog.status,
+        source: serviceDeskIngestionLog.source,
         rowsImported: serviceDeskIngestionLog.ticketsImported,
         errorMessage: serviceDeskIngestionLog.errorMessage,
       }).from(serviceDeskIngestionLog)
@@ -63,10 +64,38 @@ router.get("/summary", async (req, res) => {
         ))
         .orderBy(desc(serviceDeskIngestionLog.createdAt))
         .limit(31),
+      db.select({
+        createdAt: serviceDeskIngestionLog.createdAt,
+        status: serviceDeskIngestionLog.status,
+        filesFound: serviceDeskIngestionLog.filesFound,
+        filesProcessed: serviceDeskIngestionLog.filesProcessed,
+      }).from(serviceDeskIngestionLog)
+        .where(and(
+          eq(serviceDeskIngestionLog.source, "ftps"),
+          sql`(${serviceDeskIngestionLog.metadata}->>'kind' = 'ftp_poll' or ${serviceDeskIngestionLog.metadata}->>'kind' is null)`,
+        ))
+        .orderBy(desc(serviceDeskIngestionLog.createdAt))
+        .limit(100),
     ]);
     const days = new Set(allJobs.map(j => j.completedAt).filter(d => d && d >= start && d < end).map(d => d!.toISOString().slice(0, 10)));
     const outstanding = allJobs.filter(j => j.scheduledAt && !j.completedAt).sort((a, b) => b.ingestedAt.getTime() - a.ingestedAt.getTime())[0];
     const latestScheduleImport = scheduleImports[0];
+    const latestSuccessfulScheduleImport = scheduleImports.find(row => row.status === "success" && (row.rowsImported == null || Number(row.rowsImported) > 0));
+    const latestSuccessfulImportAt = latestSuccessfulScheduleImport?.createdAt ?? null;
+    const lastScheduleImportFreshness = !latestSuccessfulImportAt
+      ? "never"
+      : now.getTime() - latestSuccessfulImportAt.getTime() > 24 * 60 * 60 * 1000
+        ? "stale"
+        : "fresh";
+    const latestSchedulePoll = schedulePolls[0];
+    let consecutiveSchedulePollFailures = 0;
+    for (const poll of schedulePolls) {
+      if (poll.status === "success") break;
+      consecutiveSchedulePollFailures++;
+    }
+    if (consecutiveSchedulePollFailures > 0 && latestSchedulePoll && latestSuccessfulImportAt && latestSuccessfulImportAt > latestSchedulePoll.createdAt) {
+      consecutiveSchedulePollFailures = 0;
+    }
     const previousFeedSizes = scheduleImports.slice(1)
       .filter(row => row.status === "success" && row.rowsImported != null && row.rowsImported > 0)
       .slice(0, 5)
@@ -98,10 +127,19 @@ router.get("/summary", async (req, res) => {
       lastSyncStatus: last[0]?.status === "success" ? "ok" : (last[0]?.status ?? "never"),
       lastSyncError: last[0]?.errorMessage ?? null,
       outstandingJobsLastUpdatedAt: outstanding?.ingestedAt.toISOString() ?? null,
-      lastScheduleImportAt: latestScheduleImport?.createdAt.toISOString() ?? null,
-      lastScheduleImportRows: scheduleRowsImported,
+      lastScheduleImportAt: latestSuccessfulScheduleImport?.createdAt.toISOString() ?? null,
+      lastScheduleImportRows: latestSuccessfulScheduleImport?.rowsImported == null ? null : Number(latestSuccessfulScheduleImport.rowsImported),
+      lastScheduleImportSource: latestSuccessfulScheduleImport?.source ?? null,
       lastScheduleImportStatus: scheduleImportStatus,
       lastScheduleImportError: latestScheduleImport?.errorMessage ?? null,
+      lastScheduleImportFreshness,
+      lastScheduleImportFreshnessWindowHours: 24,
+      lastSchedulePollAt: latestSchedulePoll?.createdAt.toISOString() ?? null,
+      lastSchedulePollFoundFiles: latestSchedulePoll?.filesFound ?? null,
+      lastSchedulePollProcessedFiles: latestSchedulePoll?.filesProcessed ?? null,
+      lastSchedulePollStatus: !latestSchedulePoll ? "never" : latestSchedulePoll.status === "success" ? "ok" : "error",
+      consecutiveSchedulePollFailures,
+      lastSchedulePollFailureAt: consecutiveSchedulePollFailures > 0 && latestSchedulePoll ? latestSchedulePoll.createdAt.toISOString() : null,
     });
   } catch (error) { req.log.error({ error }, "Service Desk summary failed"); res.status(500).json({ error: "Failed to load Service Desk summary" }); }
 });
