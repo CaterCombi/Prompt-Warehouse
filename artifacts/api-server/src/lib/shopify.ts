@@ -295,7 +295,25 @@ async function getProducts(publicationId: string, onlineStorePublicationId: stri
   return products;
 }
 
-const RATIONAL_MODELS = ["CM", "CMP", "SCC", "SCC w.cc", "SCC WE"] as const;
+// Keep this list aligned with the refined Rational model choices in AMT.
+// Trolleys, vents, and accessories are intentionally excluded.
+const RATIONAL_MODELS = [
+  "CD",
+  "CM",
+  "CM (CPC)",
+  "CM MI",
+  "CME",
+  "CMP",
+  "CMP MI",
+  "CPC",
+  "iCombi Classic",
+  "iCombi Pro",
+  "SCC",
+  "SCC CareControl",
+  "SCC w.cc",
+  "SCC WE",
+  "SCC WE SI",
+] as const;
 const VENT_AMT_MODEL_VARIANTS = [
   "AOS Vent",
   "Combi Duo Vent",
@@ -316,6 +334,7 @@ const VENT_AMT_MODEL_VARIANTS = [
   "Vent",
 ] as const;
 const RATIONAL_SIZES = [
+  { shopifySize: "XS", amtSize: "XS" },
   { shopifySize: "6 x 1/1", amtSize: "61" },
   { shopifySize: "10 x 1/1", amtSize: "101" },
   { shopifySize: "20 x 1/1", amtSize: "201" },
@@ -390,7 +409,7 @@ function getControlRoomAssets(assets: Asset[]) {
 
 function normalizedFuel(value: string | null | undefined) {
   const fuel = normalized(value);
-  if (fuel === "e" || fuel.startsWith("electric")) return "E";
+  if (fuel === "e" || fuel.startsWith("electric") || /^e\s*-\s*\d+$/.test(fuel)) return "E";
   if (fuel === "g" || fuel.startsWith("gas")) return "G";
   return fuel.toUpperCase();
 }
@@ -427,15 +446,6 @@ export function buildLowStockProducts(assets: Asset[]): LowStockProduct[] {
       })),
     ),
   );
-  mappings.push({
-    brand: "RATIONAL",
-    model: "SCC WE",
-    shopifySize: "XS",
-    displaySection: "size",
-    amtSize: "XS",
-    fuel: "E",
-  });
-
   const ventModelByNormalized = new Map(
     VENT_AMT_MODEL_VARIANTS.map((model) => [normalized(model), model]),
   );
