@@ -49,6 +49,10 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.value;
 }
 
+export async function getSharePointAccessToken(): Promise<string> {
+  return getAccessToken();
+}
+
 async function graphRequest(method: string, pathOrUrl: string, body?: unknown): Promise<unknown> {
   const token = await getAccessToken();
   const url = pathOrUrl.startsWith("https://") ? pathOrUrl : `${GRAPH_BASE}${pathOrUrl}`;
