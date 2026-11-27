@@ -1,7 +1,10 @@
 import { Client } from "basic-ftp";
 import { Writable } from "node:stream";
 import { getSharePointAccessToken } from "./sharepoint.js";
-import { selectNewestAllJobsReport } from "./joblogicAllJobsReportCore.js";
+import {
+  buildAllJobsSharePointFilename,
+  selectNewestAllJobsReport,
+} from "./joblogicAllJobsReportCore.js";
 
 const FTP_PORT = 21;
 const FTP_LOGIN_DIRECTORY = "/";
@@ -9,13 +12,14 @@ const SHAREPOINT_SITE_PATH =
   "/sites/catercombi.sharepoint.com:/sites/CaterCombiTeamSite";
 const SHAREPOINT_DISPLAY_PATH = "Shared Documents/Reporting/Job Logic";
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
-const UPLOAD_CHUNK_BYTES = 5 * 1024 * 1024;
+const MAX_SIMPLE_UPLOAD_BYTES = 250 * 1024 * 1024;
 
 type GraphDrive = { id: string; name: string };
 type GraphItem = {
   id: string;
   name: string;
   size?: number;
+  file?: Record<string, unknown>;
   folder?: Record<string, unknown>;
   parentReference?: { id?: string };
 };
@@ -193,40 +197,56 @@ function alreadyUploadedResult(
   };
 }
 
-async function uploadBytes(
-  uploadUrl: string,
+async function uploadFileContent(
+  token: string,
+  driveId: string,
+  fileId: string,
   content: Buffer,
-): Promise<GraphItem> {
-  let uploadedItem: GraphItem | null = null;
-
-  for (let start = 0; start < content.length; start += UPLOAD_CHUNK_BYTES) {
-    const end = Math.min(start + UPLOAD_CHUNK_BYTES, content.length);
-    const chunk = content.subarray(start, end);
-    const response = await fetch(uploadUrl, {
+): Promise<void> {
+  const response = await fetch(
+    `${GRAPH_BASE}/drives/${encodeURIComponent(driveId)}`
+    + `/items/${encodeURIComponent(fileId)}/content`,
+    {
       method: "PUT",
       headers: {
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/octet-stream",
-        "Content-Length": String(chunk.length),
-        "Content-Range": `bytes ${start}-${end - 1}/${content.length}`,
       },
-      body: chunk,
-    });
-    const result = await response.json().catch(() => ({})) as GraphItem;
+      body: content,
+    },
+  );
+  if (!response.ok) {
+    const error = new Error(
+      `SharePoint upload returned HTTP ${response.status}`,
+    ) as GraphRequestError;
+    error.httpStatus = response.status;
+    throw error;
+  }
+}
 
-    if (!response.ok) {
-      const error = new Error(
-        `SharePoint upload returned HTTP ${response.status}`,
-      ) as GraphRequestError;
-      error.httpStatus = response.status;
-      throw error;
+async function removeEmptyPlaceholder(
+  token: string,
+  driveId: string,
+  fileId: string,
+  filename: string,
+): Promise<void> {
+  try {
+    const item = await graphRequest(
+      token,
+      "GET",
+      `/drives/${encodeURIComponent(driveId)}`
+      + `/items/${encodeURIComponent(fileId)}?$select=id,name,size`,
+    ) as GraphItem;
+    if (item.name === filename && Number(item.size ?? 0) === 0) {
+      await graphRequest(
+        token,
+        "DELETE",
+        `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(fileId)}`,
+      );
     }
-    if (end === content.length && result.id) uploadedItem = result;
+  } catch {
+    // Preserve the upload error; cleanup is limited to this newly created empty item.
   }
-
-  if (!uploadedItem?.id) {
-    throw new Error("SharePoint did not confirm the uploaded file");
-  }
-  return uploadedItem;
 }
 
 async function downloadFile(client: Client, filename: string): Promise<Buffer> {
@@ -272,6 +292,8 @@ export async function uploadNewestAllJobsReport(): Promise<JoblogicAllJobsUpload
     if (!newest.modifiedAt) {
       throw new Error("The newest All Jobs report has no modified time");
     }
+    const modifiedAt = newest.modifiedAt;
+    const sharePointFilename = buildAllJobsSharePointFilename(modifiedAt);
 
     stage = "ftp_download";
     const content = await downloadFile(client, newest.name);
@@ -285,29 +307,31 @@ export async function uploadNewestAllJobsReport(): Promise<JoblogicAllJobsUpload
     const { drive, folder } = await findTargetFolder(token);
 
     stage = "sharepoint_duplicate_check";
-    const existing = await findExistingFile(token, drive.id, folder.id, newest.name);
+    const existing = await findExistingFile(token, drive.id, folder.id, sharePointFilename);
     if (existing) {
       return alreadyUploadedResult(
-        newest.name,
-        newest.modifiedAt,
+        sharePointFilename,
+        modifiedAt,
         content.length,
         existing,
       );
     }
 
-    stage = "sharepoint_upload_session";
-    const sessionPath =
+    if (content.length > MAX_SIMPLE_UPLOAD_BYTES) {
+      throw new Error("The newest All Jobs report exceeds SharePoint's simple-upload limit");
+    }
+
+    stage = "sharepoint_file_create";
+    const createFilePath =
       `/drives/${encodeURIComponent(drive.id)}`
-      + `/items/${encodeURIComponent(folder.id)}:/${encodeURIComponent(newest.name)}`
-      + `:/createUploadSession`;
-    let session: { uploadUrl?: string };
+      + `/items/${encodeURIComponent(folder.id)}/children`;
+    let createdFile: GraphItem;
     try {
-      session = await graphRequest(token, "POST", sessionPath, {
-        item: {
-          name: newest.name,
-          "@microsoft.graph.conflictBehavior": "fail",
-        },
-      }) as { uploadUrl?: string };
+      createdFile = await graphRequest(token, "POST", createFilePath, {
+        name: sharePointFilename,
+        file: {},
+        "@microsoft.graph.conflictBehavior": "fail",
+      }) as GraphItem;
     } catch (error) {
       const httpStatus = (error as GraphRequestError).httpStatus;
       if (httpStatus === 409 || httpStatus === 412) {
@@ -315,12 +339,12 @@ export async function uploadNewestAllJobsReport(): Promise<JoblogicAllJobsUpload
           token,
           drive.id,
           folder.id,
-          newest.name,
+          sharePointFilename,
         );
         if (concurrentUpload) {
           return alreadyUploadedResult(
-            newest.name,
-            newest.modifiedAt,
+            sharePointFilename,
+            modifiedAt,
             content.length,
             concurrentUpload,
           );
@@ -328,58 +352,40 @@ export async function uploadNewestAllJobsReport(): Promise<JoblogicAllJobsUpload
       }
       throw error;
     }
-    if (!session.uploadUrl) {
-      throw new Error("Microsoft Graph did not return an upload session");
+    if (!createdFile.id || !createdFile.file) {
+      throw new Error("SharePoint did not confirm the new All Jobs file");
     }
 
     stage = "sharepoint_upload";
-    let uploaded: GraphItem;
     try {
-      uploaded = await uploadBytes(session.uploadUrl, content);
-    } catch (error) {
-      const httpStatus = (error as GraphRequestError).httpStatus;
-      if (httpStatus === 409 || httpStatus === 412) {
-        const concurrentUpload = await findExistingFile(
-          token,
-          drive.id,
-          folder.id,
-          newest.name,
-        );
-        if (concurrentUpload) {
-          return alreadyUploadedResult(
-            newest.name,
-            newest.modifiedAt,
-            content.length,
-            concurrentUpload,
-          );
-        }
+      await uploadFileContent(token, drive.id, createdFile.id, content);
+      stage = "sharepoint_verify";
+      const verified = await graphRequest(
+        token,
+        "GET",
+        `/drives/${encodeURIComponent(drive.id)}`
+        + `/items/${encodeURIComponent(createdFile.id)}?$select=id,name,size,parentReference`,
+      ) as GraphItem;
+      if (
+        verified.name !== sharePointFilename
+        || Number(verified.size) !== content.length
+        || (verified.parentReference?.id && verified.parentReference.id !== folder.id)
+      ) {
+        throw new Error("SharePoint verification did not match the source file");
       }
+
+      return {
+        status: "uploaded",
+        filename: sharePointFilename,
+        sourceModifiedAt: modifiedAt.toISOString(),
+        sourceSizeBytes: content.length,
+        sharePointSizeBytes: Number(verified.size),
+        sizeMatches: true,
+      };
+    } catch (error) {
+      await removeEmptyPlaceholder(token, drive.id, createdFile.id, sharePointFilename);
       throw error;
     }
-
-    stage = "sharepoint_verify";
-    const verified = await graphRequest(
-      token,
-      "GET",
-      `/drives/${encodeURIComponent(drive.id)}`
-      + `/items/${encodeURIComponent(uploaded.id)}?$select=id,name,size,parentReference`,
-    ) as GraphItem;
-    if (
-      verified.name !== newest.name
-      || Number(verified.size) !== content.length
-      || (verified.parentReference?.id && verified.parentReference.id !== folder.id)
-    ) {
-      throw new Error("SharePoint verification did not match the source file");
-    }
-
-    return {
-      status: "uploaded",
-      filename: newest.name,
-      sourceModifiedAt: newest.modifiedAt.toISOString(),
-      sourceSizeBytes: content.length,
-      sharePointSizeBytes: Number(verified.size),
-      sizeMatches: true,
-    };
   } catch (error) {
     if (error instanceof JoblogicAllJobsUploadError) throw error;
     throw new JoblogicAllJobsUploadError(

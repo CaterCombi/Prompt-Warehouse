@@ -50,6 +50,13 @@ export function getLondonDateKey(instant: Date): string {
   return calendarDateKey(local.year, local.month, local.day);
 }
 
+export function buildAllJobsSharePointFilename(modifiedAt: Date): string {
+  if (!(modifiedAt instanceof Date) || !Number.isFinite(modifiedAt.getTime())) {
+    throw new Error("Modified time was missing for an All Jobs report");
+  }
+  return `All Jobs ${getLondonDateKey(modifiedAt)}.csv`;
+}
+
 export function isLondonAtOrAfterTime(
   instant: Date,
   hour: number,

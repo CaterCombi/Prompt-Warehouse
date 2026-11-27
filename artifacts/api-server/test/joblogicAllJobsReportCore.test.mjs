@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAllJobsSharePointFilename,
   getLondonDateKey,
   isLastWorkingDayOfLondonMonth,
   isLondonAtOrAfterTime,
@@ -19,6 +20,13 @@ test("selects the newest matching All Jobs CSV by modified time", () => {
   ]);
 
   assert.equal(selected?.name, "All Jobs_new.csv");
+});
+
+test("builds the SharePoint filename from the report date in London time", () => {
+  assert.equal(
+    buildAllJobsSharePointFilename(new Date("2026-06-30T23:30:00Z")),
+    "All Jobs 2026-07-01.csv",
+  );
 });
 
 test("returns null when the FTP root has no matching report", () => {
