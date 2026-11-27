@@ -32,6 +32,7 @@ type GraphRequestError = Error & { httpStatus?: number };
 
 export type ServiceDeskReportUploadResult =
   | { status: "uploaded" | "already_uploaded"; reportMonth: string; filename: string; sizeBytes: number; webUrl?: string }
+  | { status: "skipped"; reportMonth: string; filename: string; reason: "stale" | "missing" }
   | { status: "not_due"; reportMonth: null }
   | { status: "failed"; reportMonth: string; filename: string; stage: string };
 
@@ -245,7 +246,12 @@ async function uploadServiceDeskReportForMonth(
     stage = "report_data";
     const report = await loadMonthlyServiceDeskReport(reportMonth, now);
     if (!testMode && report.source.status !== "fresh") {
-      throw new Error(`The newest Joblogic All Jobs report is ${report.source.status}; refusing to upload an incomplete monthly report`);
+      return {
+        status: "skipped",
+        reportMonth,
+        filename,
+        reason: report.source.status,
+      };
     }
 
     stage = "report_generation";
@@ -343,9 +349,10 @@ export async function uploadServiceDeskReportTestForMonth(
 }
 
 export async function runMonthlyServiceDeskReportUploadIfDue(
+  bankHolidayDates: ReadonlySet<string>,
   now = new Date(),
 ): Promise<ServiceDeskReportUploadResult> {
-  const reportMonth = dueServiceDeskReportMonth(now);
+  const reportMonth = dueServiceDeskReportMonth(now, bankHolidayDates);
   if (!reportMonth) return { status: "not_due", reportMonth: null };
   return uploadMonthlyServiceDeskReportForMonth(reportMonth, now);
 }

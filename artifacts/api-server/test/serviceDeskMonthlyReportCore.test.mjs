@@ -18,11 +18,17 @@ test("Service Desk reporting periods use London calendar-month boundaries", () =
   assert.equal(october.end.toISOString(), "2026-11-01T00:00:00.000Z");
 });
 
-test("Service Desk reports run after 09:00 London time on the first", () => {
-  assert.equal(dueServiceDeskReportMonth(new Date("2026-12-01T08:59:00Z")), null);
-  assert.equal(dueServiceDeskReportMonth(new Date("2026-12-01T09:00:00Z")), "2026-11");
-  assert.equal(dueServiceDeskReportMonth(new Date("2026-04-01T08:00:00Z")), "2026-03");
-  assert.equal(dueServiceDeskReportMonth(new Date("2026-12-02T09:00:00Z")), null);
+test("Service Desk reports run at 16:00 London time on the last working day", () => {
+  const noHolidays = new Set();
+  assert.equal(dueServiceDeskReportMonth(new Date("2026-11-30T15:59:00Z"), noHolidays), null);
+  assert.equal(dueServiceDeskReportMonth(new Date("2026-11-30T16:00:00Z"), noHolidays), "2026-11");
+  assert.equal(dueServiceDeskReportMonth(new Date("2026-11-27T16:00:00Z"), noHolidays), null);
   assert.equal(serviceDeskMonthlyReportFilename("2026-11"), "Service Desk Report 2026-11.pdf");
   assert.throws(() => serviceDeskMonthlyReportFilename("2026-13"), /YYYY-MM/);
+});
+
+test("Service Desk reports use England and Wales bank holidays for month-end", () => {
+  const holidays = new Set(["2027-05-31"]);
+  assert.equal(dueServiceDeskReportMonth(new Date("2027-05-28T15:00:00Z"), holidays), "2027-05");
+  assert.equal(dueServiceDeskReportMonth(new Date("2027-05-31T15:00:00Z"), holidays), null);
 });

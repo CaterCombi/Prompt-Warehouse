@@ -1,5 +1,5 @@
 export const SERVICE_DESK_REPORT_TIME_ZONE = "Europe/London";
-export const SERVICE_DESK_REPORT_HOUR = 9;
+export const SERVICE_DESK_REPORT_HOUR = 16;
 export const SERVICE_DESK_REPORT_MINUTE = 0;
 
 export type ServiceDeskMonthRange = {
@@ -101,12 +101,36 @@ export function serviceDeskMonthlyReportFilename(month: string): string {
   return `Service Desk Report ${month}.pdf`;
 }
 
-export function dueServiceDeskReportMonth(now: Date): string | null {
+function lastWorkingDateKeyForMonth(
+  year: number,
+  month: number,
+  bankHolidayDates: ReadonlySet<string>,
+): string {
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  for (let day = lastDay; day >= 1; day -= 1) {
+    const date = new Date(Date.UTC(year, month - 1, day));
+    const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const weekday = date.getUTCDay();
+    if (weekday !== 0 && weekday !== 6 && !bankHolidayDates.has(key)) return key;
+  }
+  throw new Error("No working day exists in the requested month");
+}
+
+export function dueServiceDeskReportMonth(
+  now: Date,
+  bankHolidayDates: ReadonlySet<string>,
+): string | null {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
     throw new Error("Service Desk report requires a valid current time");
   }
   const local = londonParts(now);
-  if (local.day !== 1 || local.hour < SERVICE_DESK_REPORT_HOUR) return null;
-  const previousMonth = new Date(Date.UTC(local.year, local.month - 2, 1));
-  return `${previousMonth.getUTCFullYear()}-${String(previousMonth.getUTCMonth() + 1).padStart(2, "0")}`;
+  if (
+    local.hour < SERVICE_DESK_REPORT_HOUR
+    || (local.hour === SERVICE_DESK_REPORT_HOUR && local.minute < SERVICE_DESK_REPORT_MINUTE)
+  ) return null;
+  const localDateKey = `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
+  if (localDateKey !== lastWorkingDateKeyForMonth(local.year, local.month, bankHolidayDates)) {
+    return null;
+  }
+  return `${local.year}-${String(local.month).padStart(2, "0")}`;
 }

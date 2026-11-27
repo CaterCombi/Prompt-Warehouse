@@ -22,7 +22,7 @@ const UK_BANK_HOLIDAY_URL = "https://www.gov.uk/bank-holidays.json";
 const BANK_HOLIDAY_CACHE_MS = 12 * 60 * 60 * 1000;
 let cachedBankHolidayDates: { fetchedAt: number; dates: Set<string> } | null = null;
 
-async function getEnglandAndWalesBankHolidayDates(): Promise<Set<string>> {
+export async function getEnglandAndWalesBankHolidayDates(): Promise<Set<string>> {
   const now = Date.now();
   if (cachedBankHolidayDates && now - cachedBankHolidayDates.fetchedAt < BANK_HOLIDAY_CACHE_MS) {
     return cachedBankHolidayDates.dates;
