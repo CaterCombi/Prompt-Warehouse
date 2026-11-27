@@ -21,7 +21,8 @@ test("monthly report scheduling rejects invalid clock values", () => {
   assert.throws(() => dueMarketingReportMonth(new Date(Number.NaN)), /valid current time/);
 });
 
-test("monthly marketing report filenames use the reporting month", () => {
-  assert.equal(monthlyMarketingReportFilename("2026-11"), "Marketing_Report_2026-11.pdf");
+test("monthly marketing report filenames use the reporting month end date", () => {
+  assert.equal(monthlyMarketingReportFilename("2026-11"), "Marketing-2026-11-30.pdf");
+  assert.equal(monthlyMarketingReportFilename("2024-02"), "Marketing-2024-02-29.pdf");
   assert.throws(() => monthlyMarketingReportFilename("November 2026"), /YYYY-MM/);
 });

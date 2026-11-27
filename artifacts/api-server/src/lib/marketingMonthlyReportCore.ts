@@ -6,7 +6,9 @@ export function monthlyMarketingReportFilename(month: string): string {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     throw new Error("Marketing report month must use YYYY-MM format");
   }
-  return `Marketing_Report_${month}.pdf`;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return `Marketing-${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}.pdf`;
 }
 
 type LondonDateParts = {
