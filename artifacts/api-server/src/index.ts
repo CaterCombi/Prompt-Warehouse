@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { scheduleMonthlyMarketingReportSharePointUpload } from "./lib/marketingMonthlyReportScheduler.js";
 import { scheduleServiceDeskSync } from "./lib/serviceDeskScheduler.js";
+import { scheduleMonthlyServiceDeskReportSharePointUpload } from "./lib/serviceDeskMonthlyReportScheduler.js";
 
 const rawPort = process.env["PORT"];
 
@@ -26,4 +27,5 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   scheduleServiceDeskSync();
   scheduleMonthlyMarketingReportSharePointUpload();
+  scheduleMonthlyServiceDeskReportSharePointUpload();
 });
